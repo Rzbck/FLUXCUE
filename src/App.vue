@@ -284,15 +284,26 @@ function tintSelectedExplicitly(){
   for(const f of selectedFixtures.value)if(!f.locked)f.tint=current.value.tint;
   rememberScene(before);
 }
+function prepareDirectCueEdit(){
+  // Select -> effect/color -> preview, without a separate preview workflow.
+  beginEdit();
+  if(cueTargetMode.value==='ALL'){
+    cueTargetMode.value='SELECTION';
+    cueTargetIdsDraft.value=[];
+  }
+  cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,...selectedIds.value])];
+  cuePreview.value=true;
+  blackout.value=false;
+}
 function paintCueFixtureDraft(event:Event){
   const value=(event.target as HTMLInputElement).value;
   if(!/^#[0-9a-f]{6}$/i.test(value))return;
-  beginEdit();
-  cueDraftColors.value={...cueDraftColors.value,[current.value.id]:value};
-  if(cueTargetMode.value==='SELECTION'){
-    cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,current.value.id])];
-  }
+  prepareDirectCueEdit();
+  const next={...cueDraftColors.value};
+  for(const f of selectedFixtures.value)if(!f.locked)next[f.id]=value;
+  cueDraftColors.value=next;
 }
+function onCueEffectChanged(){prepareDirectCueEdit();commitEdit();}
 function applyCueColorToSelection(){
   const before=snapshotScene(),value=activeCueFixtureColor.value;
   const next={...cueDraftColors.value};
@@ -1259,6 +1270,13 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
             <input :value="current.density" class="num" aria-label="Custom LEDs per meter" type="number" min="1" max="600" step="1" :disabled="current.locked" @change="changeDensity"/>
           </div></label>
         <label class="field"><span>Pixels total</span><b class="value mono">{{current.pixels}} px</b></label>
+        <label class="field"><span>BASE STRIP COLOUR</span>
+          <div class="control">
+            <input type="color" aria-label="Fixture base colour, outside cue programming"
+              :value="current.tint" @pointerdown="beginEdit" @input="paintSelection" @change="commitEdit"/>
+            <b class="hex mono">{{current.tint.toUpperCase()}}</b>
+          </div>
+        </label>
         <div class="section-label">SMD / LIGHT OPTICS · SIMULATED</div>
         <label class="field"><span>SMD package</span>
           <select :value="current.ledSizeMm" :disabled="current.locked" @change="changeOptics($event,'ledSizeMm')">
@@ -1285,29 +1303,32 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
         <div class="panel-note">Drag move / rotate / scale gizmos. Strip pixel count derives from length × density.</div></template>
         <button class="section-collapse inspector-section" @click="togglePanel('effects')" :aria-expanded="!collapsedPanels.effects">{{collapsedPanels.effects?'▸':'▾'}} CUE DRAFT / COLOUR</button>
         <template v-if="!collapsedPanels.effects">
-        <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Strip Gradient</option><option value="spatial-wave">World-space Wave</option><option value="spatial-blocks">3D Blocks</option></select></label>
-        <label class="field"><span>ACTIVE STRIP COLOUR</span>
-          <div class="control"><input type="color" aria-label="Only active LED strip colour" :value="current.tint"
-            @pointerdown="beginEdit" @input="paintSelection" @change="commitEdit"/>
-            <b class="hex mono">{{current.tint.toUpperCase()}}</b>
-          </div>
+        <div class="cue-direct-tip">1. SELECT LEDS → 2. EFFECT + COLOUR → 3. UPDATE / NEW CUE</div>
+        <label class="field"><span>EFFET DIRECT</span>
+          <select v-model="effect" @focus="beginEdit" @change="onCueEffectChanged">
+            <option value="solid">Solid Color</option>
+            <option value="rainbow">Rainbow Flow</option>
+            <option value="chase">Chase / Trail</option>
+            <option value="gradient">Strip Gradient</option>
+            <option value="spatial-wave">World-space Wave</option>
+            <option value="spatial-blocks">3D Blocks</option>
+          </select>
         </label>
-        <button class="tint-batch-button" :disabled="selectionCount<2" @click="tintSelectedExplicitly">APPLY ACTIVE COLOUR TO {{selectionCount}} SELECTED STRIPS</button>
-        <div class="panel-note">This picker changes ONLY the active strip. Use the button to apply the same filter to multiple selected strips.</div>
-        <label class="field"><span>CUE DEFAULT COLOUR</span><div class="control">
-          <input v-model="color" aria-label="Default cue color" type="color" @pointerdown="beginEdit" @change="commitEdit"/>
-          <b class="hex mono">{{color.toUpperCase()}}</b>
-        </div></label>
-        <label class="field"><span>CUE LOOK · ACTIVE STRIP</span><div class="control">
-          <input type="color" aria-label="Different color for this fixture in selected cue"
-            :value="activeCueFixtureColor" @pointerdown="beginEdit" @input="paintCueFixtureDraft" @change="commitEdit"/>
+        <label class="field"><span>COULEUR SÉLECTION</span><div class="control">
+          <input type="color" :value="activeCueFixtureColor"
+            aria-label="Cue colour immediately previewed on selected fixtures"
+            @pointerdown="prepareDirectCueEdit" @input="paintCueFixtureDraft" @change="commitEdit"/>
           <b class="hex mono">{{activeCueFixtureColor.toUpperCase()}}</b>
         </div></label>
-        <div class="cue-look-actions">
-          <button @click="applyCueColorToSelection" :disabled="selectionCount<2">APPLY LOOK TO SELECTED ({{selectionCount}})</button>
-          <button @click="clearCueFixtureOverrides">CLEAR OVERRIDES</button>
+        <div class="cue-direct-actions">
+          <button @click="updateCue">↻ UPDATE CUE</button>
+          <button @click="addCue">＋ NEW CUE</button>
+          <button :class="{active:cuePreview}" @click="cuePreview=!cuePreview">
+            {{cuePreview?'◉ DIRECT PREVIEW':'◯ PREVIEW'}}
+          </button>
         </div>
-        <div class="panel-note">Each fixture can have a different colour in ONE cue. Select a strip, set its cue colour, then UPDATE SELECTED CUE or SAVE AS NEW CUE.</div>
+        <div class="panel-note">Effect and colour preview immediately on the selected strips. Other strips stay unchanged.
+          Use UPDATE CUE to keep the changes or NEW CUE to save a separate look.</div>
         <label class="field"><span>Speed</span><div class="control"><input v-model.number="speed" type="range" min="0" max="3" step="0.01"/><span class="value">{{ speed.toFixed(2) }}</span></div></label>
         <label class="field"><span>Brightness</span><div class="control"><input v-model.number="brightness" type="range" min="0" max="1" step="0.01"/><span class="value">{{ Math.round(brightness*100) }}%</span></div></label>
         </template><button class="section-collapse inspector-section" @click="togglePanel('pixel')" :aria-expanded="!collapsedPanels.pixel">{{collapsedPanels.pixel?'▸':'▾'}} PIXEL / VIRTUAL PATCH</button>
