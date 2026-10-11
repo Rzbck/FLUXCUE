@@ -45,6 +45,7 @@ const groupNameDraft=ref('');
 const autoPlay=ref(false);
 const saveState=ref<'READY'|'SAVED'|'PENDING'|'ERROR'|'RECOVERED'>('READY');
 const activeLayers=ref<ActiveLayer[]>([]);
+const blackout=ref(false);
 const layerBudget=12;
 const selectedTint=ref('#ffffff');
 const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
@@ -52,6 +53,7 @@ const runningCueIds=computed(()=>new Set(activeLayers.value.map(l=>l.cueId)));
 let hydrated=false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let autoNextTime=Infinity;
+let lastClockSaved=0;
 const storageKey='fluxcue.studio.project.v02';
 const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
 const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
@@ -110,6 +112,16 @@ const dummy = new THREE.Object3D();
 const colorA = new THREE.Color();
 const colorB = new THREE.Color();
 const tmp = new THREE.Color();
+const tintColors = new Map<string,{hex:string;value:THREE.Color}>();
+function getTintColor(f:Fixture):THREE.Color {
+  const hex=f.tint||'#ffffff';
+  let cached=tintColors.get(f.id);
+  if(!cached||cached.hex!==hex){
+    cached={hex,value:new THREE.Color(hex)};
+    tintColors.set(f.id,cached);
+  }
+  return cached.value;
+}
 const gradientEnd = new THREE.Color('#1b72a7');
 function resize() {
   if (!viewport.value || !renderer || !camera) return;
@@ -208,7 +220,8 @@ function togglePanel(name:keyof typeof collapsedPanels.value){
 }
 function serializableProject(){
   return {fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
-    autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value};
+    autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,
+    activeLayers:activeLayers.value,showTime,running:running.value,blackout:blackout.value};
 }
 function persistLocal(){
   if(!hydrated)return;
@@ -235,6 +248,10 @@ function restoreLocal(){
     collapsedGroups.value=parsed.collapsedGroups;
     autoPlay.value=parsed.autoPlay;
     speed.value=parsed.speed;brightness.value=parsed.brightness;
+    activeLayers.value=parsed.activeLayers as ActiveLayer[];
+    showTime=parsed.showTime;showSeconds.value=parsed.showTime;
+    running.value=parsed.running;blackout.value=parsed.blackout;
+    autoNextTime=autoPlay.value?cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5):Infinity;
     effect.value=cues.value[activeIndex.value]?.effect||'solid';
     color.value=cues.value[activeIndex.value]?.color||'#ffffff';
     saveState.value='RECOVERED';
@@ -251,6 +268,7 @@ function disposeStrips() {
     (mesh.material as THREE.Material).dispose();
   }
   strips.clear();
+  tintColors.clear();
   for (const line of hitLines.values()) {
     scene.remove(line);line.geometry.dispose();
     (line.material as THREE.Material).dispose();
@@ -512,7 +530,7 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*speed.value*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
-  const tint=new THREE.Color(f.tint||'#ffffff');
+  const tint=getTintColor(f);
   // Unpatched base look, used when all cues are stopped.
   sampleFx(effect.value,'#ffffff',index,count,time,colorB,f);
   let rgb=activeLayers.value.length ? [0.008,0.008,0.008] : [colorB.r,colorB.g,colorB.b];
@@ -528,8 +546,8 @@ function drawPixels(){
   for(const f of fixtures.value){
     const mesh=strips.get(f.id);if(!mesh)continue;
     for(let i=0;i<mesh.count;i++){
-      sampleCurrentPixel(f,i,mesh.count,showTime,tmp);
-      mesh.setColorAt(i,tmp.multiplyScalar(brightness.value));
+      if(blackout.value)mesh.setColorAt(i,tmp.setRGB(0,0,0));
+      else {sampleCurrentPixel(f,i,mesh.count,showTime,tmp);mesh.setColorAt(i,tmp.multiplyScalar(brightness.value));}
     }
     if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
@@ -539,6 +557,7 @@ function frame(now:number){
   const dt=lastFrame?Math.max(0,(now-lastFrame)/1000):0;
   lastFrame=now;
   showTime=advancePreviewClock(showTime,dt,running.value);
+  if(showTime-lastClockSaved>8){lastClockSaved=showTime;scheduleSave();}
   if(autoPlay.value && running.value && cues.value.length>0 && showTime>=autoNextTime){
     applyCue((activeIndex.value+1)%cues.value.length);
   }
@@ -550,6 +569,7 @@ function frame(now:number){
 function applyCue(index:number){
   if(index<0||index>=cues.value.length)return;
   const c=cues.value[index];
+  blackout.value=false;
   // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
   const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
     mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade};
@@ -561,7 +581,7 @@ function applyCue(index:number){
   running.value=true;
 }
 function stopCue(id:string){activeLayers.value=activeLayers.value.filter(l=>l.cueId!==id);scheduleSave();}
-function stopAllCues(){activeLayers.value=[];autoNextTime=Infinity;autoPlay.value=false;scheduleSave();}
+function stopAllCues(){activeLayers.value=[];autoNextTime=Infinity;autoPlay.value=false;blackout.value=true;scheduleSave();}
 function toggleAutoPlay(){
   autoPlay.value=!autoPlay.value;
   if(autoPlay.value){
@@ -612,7 +632,7 @@ function removeActiveCue(){
 }
 function resetClock(){
   showTime=0;showSeconds.value=0;fadeStarted.value=0;fadeSeconds.value=0;
-  activeLayers.value=[];autoNextTime=Infinity;
+  activeLayers.value=[];autoNextTime=Infinity;blackout.value=true;
   running.value=false;lastFrame=0;
 }
 function addFixture() {
@@ -652,7 +672,7 @@ function loadProject(event:Event){
     selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
     activeIndex.value=p.activeIndex;collapsedGroups.value=p.collapsedGroups;
     speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
-    activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;
+    activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;blackout.value=false;
     undoStack.value=[];redoStack.value=[];editStart=null;
     effect.value=cues.value[activeIndex.value]?.effect || 'solid';
     color.value=cues.value[activeIndex.value]?.color || '#ffffff';
@@ -755,11 +775,11 @@ onUnmounted(()=>{
   if (scene)disposeStrips();
   pixelGeometry?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
-watch(fixtures,()=>{rebuildScene();syncTransform();},{deep:true});
+watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.visible,f.locked].join(':')).join('|'),()=>{rebuildScene();syncTransform();});
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
-watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness],scheduleSave,{deep:true});
+watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,activeLayers,running,blackout],scheduleSave,{deep:true});
 </script>
 
 <template>
