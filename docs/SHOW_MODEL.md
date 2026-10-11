@@ -49,3 +49,6 @@ Original pure scenePixelPosition, virtualPixelRows and createFixtureArray functi
 - `groups: string[]` is the user-created named group list, including empty groups. A fixture `group: ''` is ungrouped. No automatic grouping by chip, type, fixture name or generated layout.
 - `cue.looks: {[fixtureId]: '#RRGGBB'}` stores optional different colours per fixture within a single cue. `activeLayer.looks` is copied when GO starts; cue colour remains the fallback for fixtures without custom looks. This does not change physical device patching.
 - Global editor history snapshots contain fixture data, group list, cue data and current editing draft (separate from the show clock). Geometry group scale is length-only, not a spatial scaling of fixture centre positions.
+
+## Uncommitted editor cue draft (2026-10-11)
+New optional locally persisted `editorDraft`: `cueIndex`, `effect`, `color`, `speed`, `targetMode`, explicit `targetIds` and per-fixture `looks`. Draft targets remain stable when active fixture selection moves; never infer previous targets solely from current selection. Before output is enabled, a future schema must distinguish empty custom target set from ALL to eliminate ambiguity.

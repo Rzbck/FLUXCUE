@@ -105,3 +105,10 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Cue edit button does not start/show GO; PREVIEW DRAFT applies only selected (or explicit ALL) fixtures; update cue and GO persists per-fixture looks and preserves other running layers.
 - [ ] Old saved scene auto STAGE/FLOOR fixture groups migrate only for the four known demo fixtures; user-built named legacy groups remain.
 - [ ] No live protocol/backend output.
+
+### Current v0.2.1 acceptance updates
+- [x] PR CI 38172445001 for feature SHA 7678f7a9: 71/71 Node tests + TS/Vite, source/dist security and Pages asset paths PASS.
+- [x] Fixture-specific cue targets persist across editing different fixtures and uncommitted drafts reload (pure test).
+- [x] Project title and original auto-demo-group migration tested (pure tests).
+- [ ] Protected final docs PR merge, main CI and Pages deployment.
+- [ ] Real Brave input focus/colour dialog, ctrl-z move/colour/group/cue undo, cue per-fixture colour, group drag/drop and length-only SCALE at two resolutions; NOT RUN.

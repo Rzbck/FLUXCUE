@@ -65,3 +65,7 @@ No dates promised until milestones' acceptance tests pass.
 - [x] Code and tests: universal undo/redo transactions, in-place group strip scaling, user-owned groups and legacy migration, cue edit/GO separation and independent per-fixture cue colour.
 - [ ] Final PR CI, protected merge and Pages deployment; hands-on Brave interaction proof.
 - [ ] Follow-on: more comprehensive graphical history/interaction automation, fixture hierarchy, cue playback compositor editing, spline/GLB and real protocol testing.
+
+## v0.2.1 cue target composition and editable project name (2026-10-11)
+- [x] Cue multi-fixture target lists persist while selecting other fixtures; uncommitted draft autosave, user-named shows, neutral default fixture names; PR CI 38172445001 71 PASS.
+- [ ] Protected PR merge, public Pages deploy and manual Brave regression before closing #8 or #4.
