@@ -1,5 +1,5 @@
 /** FLUXCUE original pure selection and group-transform model (no WebGL or I/O). */
-export function chooseSelection(existing, clicked, order, {toggle=false,range=false,anchor=null}={}) {
+export function chooseSelection(existing, clicked, order, {toggle=false,range=false,anchor=''}={}) {
   if (!order.includes(clicked)) return existing.filter(id=>order.includes(id));
   const clean=existing.filter((id,i)=>order.includes(id)&&existing.indexOf(id)===i);
   if (range && order.includes(anchor)) {
