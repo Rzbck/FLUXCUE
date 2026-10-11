@@ -354,8 +354,14 @@ function onOutsideMenu(event:PointerEvent){
   const element=event.target as Element;
   if(contextMenu.value.visible && !element?.closest?.('.scene-context-menu'))contextMenu.value.visible=false;
 }
-function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color) {
+function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color, fixture: Fixture) {
   const p = count <= 1 ? 0 : index/(count-1);
+  if(mode==='spatial-wave' || mode==='spatial-blocks'){
+    // Stable physical XYZ coordinates: moving a fixture changes how a wave crosses it.
+    const world=scenePixelPosition(sanitizeFixture(fixture),index);
+    const amount=mode==='spatial-wave'?spatialWave(world,t,speed.value):spatialBlocks(world,t,speed.value);
+    return result.set(hex).multiplyScalar(.06+amount*.94);
+  }
   if (mode==='solid') return result.set(hex);
   if (mode==='rainbow') return result.setHSL((p - t*speed.value*0.22 + 1)%1,0.8,0.58);
   if (mode==='chase') {
@@ -365,7 +371,7 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*speed.value*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
-  sampleFx(effect.value,color.value,index,count,time,colorB);
+  sampleFx(effect.value,color.value,index,count,time,colorB,f);
   const start = fadeFrom.get(f.id);
   const blend = fadeFactor(time,fadeStarted.value,fadeSeconds.value);
   const slot = index * 3;
@@ -554,7 +560,7 @@ onMounted(()=>{
       const modified=transformGroup(dragBaseline,selectedIds.value,dragPivot,
         toolMode.value==='translate'?delta:{x:0,y:0,z:0},
         toolMode.value==='rotate'?degrees:0);
-      const byId=new Map(modified.map(f=>[f.id,f]));
+      const byId=new Map<string,Fixture>(modified.map((f: Fixture)=>[f.id,f]));
       for(const f of fixtures.value){
         const next=byId.get(f.id);
         if(next){f.x=next.x;f.y=next.y;f.z=next.z;f.angle=next.angle;}
