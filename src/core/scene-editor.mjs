@@ -1,7 +1,9 @@
 /** Original FLUXCUE spatial editor helpers; no browser, controller or network dependency. */
 export function snapPosition(value, step) {
   if (!Number.isFinite(value) || !Number.isFinite(step) || step < 0) throw new RangeError('Invalid position or snap');
-  const rounded=step===0?value:Math.round(value/step)*step;
+  // Treat half-grid boundaries consistently despite binary float representations.
+  const scaled=step===0?value:value/step;
+  const rounded=step===0?value:Math.round(scaled+Math.sign(scaled)*Number.EPSILON*8)*step;
   return Math.round(rounded*1e6)/1e6;
 }
 export function snapAngle(degrees, step) {
