@@ -40,3 +40,10 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [x] Owner configured GitHub ruleset `Protect main`; API confirmed active PR requirement (0 approvals), required `studio` status, strict latest-base rule, deletion and force-push blocks. Independent GitHub secret-scanning settings NOT VERIFIED.
 - [ ] Browser smoke in Brave at 1920x1080 and 1366x768.
 - [ ] Oracle and VPN audit, site protocol, live output, rollback: NOT RUN / NOT AUTHORIZED.
+
+## CI warning-fix evidence (2026-10-11)
+- [x] PR #13 run 38154767747: security source scan PASS, locked npm install PASS, typecheck/build PASS, tests **12/12 PASS**, static dist scan **6 files PASS**.
+- [x] Vite chunk size warning absent: largest `three-core` chunk **477.38 kB**, previous monolithic JS 579.79 kB.
+- [x] GitHub Node20 deprecation warning absent from PR CI after SHA-pinned Node24 action upgrade.
+- [ ] New RELEASE job using Node24 upload/download Actions end-to-end: **NOT RUN**. Existing release v0.1.0-alpha.0 remains unchanged.
+- [ ] Third-party `punycode` deprecation in console: present, not root cause of the two noted warnings. Browser runtime/smoke still NOT RUN.

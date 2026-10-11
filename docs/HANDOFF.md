@@ -74,3 +74,17 @@ Suggested new-conversation first message:
 - GitHub branch ruleset `Protect main` ID 24883490 **ACTIVE** and verified via GitHub connector API: default `main`, no bypass, PR required with 0 reviewers, deletion and non-fast-forward blocked, `studio` status required, `strict_required_status_checks_policy=true` (branch up-to-date checks).
 - Mode is **SIMULATOR** only. Browser visual smoke NOT RUN; Oracle, SSH, Tailscale, real lighting outputs and server deployment NOT RUN. Public release is GitHub prerelease, not production installation.
 - Next single goal: #3 real Brave/Chrome browser smoke of the released static Studio, then fix findings through PR. No VPS access required.
+
+## 2026-10-11 — Two build warning fixes (PR pending CI)
+- Recent `FLUXCUE Studio CI` run 38154004703 SUCCESS but Vite reported a 579.79 kB combined JS chunk and GitHub Actions warned that Node 20 based `checkout`, `setup-node`, `upload-artifact`, `download-artifact` actions are deprecated. A third-party `punycode` deprecation message also appeared in console, distinct from the 2 requested warnings.
+- **Proposed**: SHA-pin verified upstream Node24 action versions: checkout v5, setup-node v5, upload-artifact v6, download-artifact v7; preserve no-secret build vs write-only publish job split.
+- **Proposed**: Vite Rollup chunks separated for Three core / Three extras / Vue runtime, rather than hiding the size warning by raising the threshold. **Effect and CI NOT VERIFIED** until PR pipeline passes; no UI/browser smoke was performed.
+- No VPS, SSH, Tailscale access, network lighting or deploy changes. Older GitHub run warnings remain historical.
+- Next acceptance: PR CI green 12/12, actual output JS chunks below Vite threshold and zero Node20 GitHub warnings; then merge via protected PR.
+
+### CI evidence — warning fixes (2026-10-11)
+- Public PR #13: https://github.com/Rzbck/FLUXCUE/pull/13 ; head `bef0fa53410776c5707f864013f00b7abbe7f38a` passed public PR CI https://github.com/Rzbck/FLUXCUE/actions/runs/38154767747.
+- Commands actually executed by PR CI: `node scripts/check-public-security.mjs --repo`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, `npm test` (**12 PASS, 0 FAIL**), `node scripts/check-public-security.mjs --dist` (**6 distribution files PASS**).
+- Vite output size: formerly combined JavaScript 579.79 kB (warning >500 kB). After splitting chunks: `three-core` 477.38 kB, `vue-runtime` 65.70 kB, `three-controls` 19.10 kB and app 17.12 kB. **Vite oversized-chunk warning absent in PR CI logs.** No browser runtime/smoke verification has occurred.
+- SHA pinned Node24 action versions independently checked via official `action.yml`: checkout v5, setup-node v5, upload-artifact v6, download-artifact v7; PR CI has no GitHub `Node.js 20 is deprecated` annotation. **Updated release workflow itself NOT RUN**, and does not modify the previously published alpha. Third-party `punycode` console deprecation messages remain in PR CI logs; not a build failure.
+- Oracle, VPS, SSH, Tailscale and LED outputs remain untouched.
