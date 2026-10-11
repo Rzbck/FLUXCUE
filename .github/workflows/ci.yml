@@ -6,61 +6,29 @@ on:
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   studio:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - name: Check out (no persisted credentials)
+      - name: Checkout (no saved credentials)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Set up Node
+      - name: Setup Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - name: Generate bootstrap lockfile without package scripts
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Validate locked install
+      - name: Public repository security checks (before installing)
+        run: node scripts/check-public-security.mjs --repo
+      - name: Install locked dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Typecheck and build
+      - name: Typecheck and static Studio build
         run: npm run build
-      - name: Unit tests
+      - name: Unit and security regression tests
         run: npm test
-      - name: Upload lockfile for explicit review and commit
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: fluxcue-lockfile-bootstrap
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 1
-
-  bootstrap-lockfile-write:
-    needs: studio
-    if: ${{ github.event_name == 'pull_request' && github.actor == 'Rzbck' && github.event.pull_request.head.repo.full_name == 'Rzbck/FLUXCUE' && github.event.pull_request.head.ref == 'security/reproducible-alpha-release' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - name: Download isolated lockfile (no npm execution, no secrets)
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: fluxcue-lockfile-bootstrap
-      - name: Commit lockfile only to trusted branch (one-time bootstrap)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s package-lock.json
-          jq -e '.name == "fluxcue" and .lockfileVersion == 3 and (.packages | length > 20) and .packages[""].name == "fluxcue"' package-lock.json >/dev/null
-          if gh api "repos/Rzbck/FLUXCUE/contents/package-lock.json?ref=$HEAD_BRANCH" --jq .sha >/dev/null 2>&1; then
-            echo "Lockfile already exists: no write."
-            exit 0
-          fi
-          encoded="$(base64 -w0 package-lock.json)"
-          gh api --method PUT "repos/Rzbck/FLUXCUE/contents/package-lock.json" \
-            -f message="build: lock reviewed npm dependency tree" \
-            -f branch="$HEAD_BRANCH" -f content="$encoded" --jq .commit.sha
+      - name: Reject unsafe static output
+        run: node scripts/check-public-security.mjs --dist

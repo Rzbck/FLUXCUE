@@ -11,7 +11,7 @@ FLUXCUE aims to combine a compact professional dark UI, interactive 3D LED layou
 ```sh
 git clone https://github.com/Rzbck/FLUXCUE.git
 cd FLUXCUE
-npm install
+npm ci --ignore-scripts --no-audit --no-fund
 npm run dev
 # http://127.0.0.1:5173
 ```
@@ -45,3 +45,15 @@ Read [AGENTS.md](AGENTS.md) and [docs/HANDOFF.md](docs/HANDOFF.md). Keep the han
 Independent FLUXCUE project. Inspiration is explicitly credited in [the audit](docs/AUDIT_OPEN_SOURCE.md). Source code and licences of cited upstream projects are not incorporated merely by citing them.
 
 The new original code in this repository is MIT-licensed unless stated otherwise. See [LICENSE](LICENSE). Third-party modules, if added, retain their own separate licences and attribution.
+
+## Public alpha release and security boundary
+
+The public build and CI have **NO** SSH/Tailscale/Oracle credentials, service endpoint configuration, private client topology or GitHub Actions private runners. The only build data is the checked-in npm lockfile. Dependency install is `npm ci --ignore-scripts`; third-party Actions are SHA-pinned and public CI has read-only repository permissions.
+
+- `.github/workflows/ci.yml`: builds and unit-tests `main` / PRs, rejects prohibited secrets and private routing indicators before install and after generating `dist/`.
+- `.github/workflows/release.yml`: **manual-only**, actor/repo/main restricted; verifies the exact public source SHA had successful public CI, rebuilds with locked dependencies, generates a static `tar.gz`, `SHA256SUMS` and `manifest.json`, and publishes an **alpha prerelease**. The write-token publish job has **no npm install/build**, no checkout and no remote host access.
+- Release contains **only static Studio** (simulator; no Art-Net/sACN). Check `sha256sum -c SHA256SUMS` after download. A SHA-256 digest detects changes but is not itself a signature or independent proof that GitHub was not compromised.
+- Never store secrets in PUBLIC or PRIVATE Git. If a credential is ever exposed, revoke/rotate immediately; deleting it from a commit does not remove it from Git history. Repository scanning is a defense-in-depth check, not a guarantee.
+- No automated deployment to Oracle. Actual deployment is separately audited and approved through the private [FLUXCUE-Deploy](https://github.com/Rzbck/FLUXCUE-Deploy) runbooks.
+
+The first release is deliberately **not marked production-ready**; browser smoke tests, remote access and real lighting output remain unverified.
