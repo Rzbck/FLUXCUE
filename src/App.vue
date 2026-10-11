@@ -359,7 +359,7 @@ function updateGrid() {
   if (!scene)return;
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
   if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
-  coarseGrid=new THREE.GridHelper(20,20,'#44576a','#263747');
+  coarseGrid=new THREE.GridHelper(20,20,'#424242','#222222');
   coarseGrid.visible=showGrid.value;
   scene.add(coarseGrid);
   // 1 cm -> local 1m patch with 100 subdivisions; 5 cm -> 4m/80.
@@ -367,7 +367,7 @@ function updateGrid() {
   const unit=positionSnap.value || 1;
   const size=positionSnap.value>0 ? Math.min(20,Math.max(1,unit*80)) : 20;
   const divisions=Math.min(100,Math.round(size/unit));
-  grid=new THREE.GridHelper(size,divisions,'#4d657a','#304051');
+  grid=new THREE.GridHelper(size,divisions,'#484848','#303030');
   grid.visible=showGrid.value && positionSnap.value>0 && positionSnap.value<1;
   scene.add(grid);
   updateGridAnchor();
@@ -714,7 +714,7 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(()=>{
   restoreLocal();hydrated=true;
-  scene=new THREE.Scene();scene.background=new THREE.Color('#070809');
+  scene=new THREE.Scene();scene.background=new THREE.Color('#070707');
   camera=new THREE.PerspectiveCamera(48,1,0.02,1000);camera.position.set(7,4.7,8);
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
@@ -724,7 +724,7 @@ onMounted(()=>{
   controls.target.set(0,1.35,0);controls.enableDamping=true;controls.dampingFactor=0.065;controls.update();
   updateGrid();
   scene.add(new THREE.AxesHelper(0.65));
-  const bounds=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-3,0,-2),new THREE.Vector3(3,3.1,2)),'#35404c');
+  const bounds=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-3,0,-2),new THREE.Vector3(3,3.1,2)),'#383838');
   scene.add(bounds);
   pixelGeometry=new THREE.SphereGeometry(0.038,7,5);
   transformProxy=new THREE.Object3D();scene.add(transformProxy);
