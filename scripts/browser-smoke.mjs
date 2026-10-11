@@ -72,6 +72,7 @@ try{
   await delay(200);
  }
  if(!ready)throw new Error('Studio did not mount WebGL / smoke hook: '+errors.join('; '));
+ console.log('GIZMO POINTER CANDIDATES:',JSON.stringify(await evaluate('window.__FLUXCUE_SMOKE__.pointerCandidates()')));
  const initial=await evaluate('window.__FLUXCUE_SMOKE__.state()');
  assert.ok(Number.isFinite(initial.x),'Fixture position is finite');
  const key=async(modifiers=2)=>{
