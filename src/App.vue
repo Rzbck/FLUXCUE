@@ -15,8 +15,10 @@ import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from '.
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
 import {commitHistory,stepHistory,sameUndoableState} from './core/editor-history.mjs';
 import {DIFFUSERS,EMITTERS,optics,copyFixtures} from './core/led-optics.mjs';
+import {ADVANCED_EFFECTS,effectSample} from './core/effects.mjs';
 
-type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
+type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks'
+  | 'breath'|'pulse'|'comet'|'scanner'|'theater'|'sparkle'|'fire'|'plasma'|'spatial-ripple'|'spatial-orbit'|'strobe';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string; ledSizeMm:number; emitterMode:'front'|'dual'; diffuser:'none'|'flat'|'tube' };
 type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
@@ -727,6 +729,15 @@ function onOutsideMenu(event:PointerEvent){
 }
 function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color, fixture: Fixture, cueSpeed=speed.value) {
   const p = count <= 1 ? 0 : index/(count-1);
+  if(ADVANCED_EFFECTS.includes(mode)){
+    const world=scenePixelPosition(sanitizeFixture(fixture),index);
+    const sampled=effectSample(mode,p,world,t,cueSpeed);
+    if(sampled.fire){
+      const v=sampled.level;
+      return result.setRGB(v,Math.min(1,v*.32),Math.min(1,v*.035));
+    }
+    return result.set(hex).multiplyScalar(sampled.level);
+  }
   if(mode==='spatial-wave' || mode==='spatial-blocks'){
     // Stable physical XYZ coordinates: moving a fixture changes how a wave crosses it.
     const world=scenePixelPosition(sanitizeFixture(fixture),index);
@@ -1312,6 +1323,19 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
             <option value="gradient">Strip Gradient</option>
             <option value="spatial-wave">World-space Wave</option>
             <option value="spatial-blocks">3D Blocks</option>
+            <optgroup label="DYNAMIC / GENERATIVE">
+              <option value="breath">Breathing</option>
+              <option value="pulse">Heartbeat Pulse</option>
+              <option value="comet">Comet Tail</option>
+              <option value="scanner">Scanner</option>
+              <option value="theater">Theatre Chase</option>
+              <option value="sparkle">Sparkle</option>
+              <option value="fire">Fire</option>
+              <option value="plasma">Plasma</option>
+              <option value="spatial-ripple">3D Ripple</option>
+              <option value="spatial-orbit">3D Orbit</option>
+              <option value="strobe">Strobe (3 Hz max)</option>
+            </optgroup>
           </select>
         </label>
         <label class="field"><span>COULEUR SÉLECTION</span><div class="control">
