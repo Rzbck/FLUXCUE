@@ -8,24 +8,28 @@ import {chooseSelection, editableFixtures, selectionPivot, transformGroup, scene
 import { describePatch } from './core/patch.mjs';
 import { virtualPixelRows } from './core/pixel-map.mjs';
 import { createFixtureArray } from './core/layouts.mjs';
-import { fadeFactor, blendChannel, advancePreviewClock } from './core/cue-engine.mjs';
+import { fadeFactor, advancePreviewClock } from './core/cue-engine.mjs';
+import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,scaleSelected} from './core/hardware.mjs';
+import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
+import {cueAppliesTo,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
-type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean };
-type SceneSnapshot = { fixtures: Fixture[]; selectedId: string; selectedIds: string[] };
-type ToolMode = 'translate' | 'rotate';
-type Cue = { id: string; name: string; effect: Fx; fade: number; color: string };
+type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
+type SceneSnapshot = { fixtures: Fixture[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; effect:Fx; color:string; speed:number; brightness:number };
+type ToolMode = 'translate' | 'rotate' | 'scale';
+type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[] };
+type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number};
 const fixtures = ref<Fixture[]>([
-  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'STAGE',visible:true,locked:false },
-  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false },
-  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false },
-  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'FLOOR',visible:true,locked:false }
+  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
+  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'FLOOR',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
 ]);
 const cues = ref<Cue[]>([
-  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5' },
-  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff' },
-  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e' },
-  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff' }
+  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[] },
+  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[] },
+  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[] },
+  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[] }
 ]);
 const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
@@ -34,6 +38,19 @@ const bulkGroup = ref('STAGE');
 const layoutType = ref<'ROW X'|'ROW Z'|'RING XY'>('ROW X');
 const layoutCount = ref(6);
 const layoutSpacing = ref(0.6);
+const collapsedGroups=ref<string[]>([]);
+const collapsedPanels=ref({scene:false,arrays:true,patch:false,cues:false,geometry:false,effects:false,pixel:true});
+const editingGroup=ref<string|null>(null);
+const groupNameDraft=ref('');
+const autoPlay=ref(false);
+const saveState=ref<'READY'|'SAVED'|'PENDING'|'ERROR'|'RECOVERED'>('READY');
+const activeLayers=ref<ActiveLayer[]>([]);
+const layerBudget=12;
+const selectedTint=ref('#ffffff');
+let hydrated=false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let autoNextTime=Infinity;
+const storageKey='fluxcue.studio.project.v02';
 const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
 const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
 const selectionCount = computed(() => selectedIds.value.length);
@@ -97,7 +114,7 @@ function resize() {
   renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
-  return { fixtures:fixtures.value.map(f=>({...f})),selectedId:selectedId.value,selectedIds:[...selectedIds.value] };
+  return { fixtures:fixtures.value.map(f=>({...f})),cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds]})),selectedId:selectedId.value,selectedIds:[...selectedIds.value],activeIndex:activeIndex.value,effect:effect.value,color:color.value,speed:speed.value,brightness:brightness.value };
 }
 function rememberScene(previous: SceneSnapshot) {
   if (sameScene(previous,snapshotScene())) return;
@@ -106,6 +123,9 @@ function rememberScene(previous: SceneSnapshot) {
 }
 function restoreScene(previous: SceneSnapshot) {
   fixtures.value=previous.fixtures.map(f=>({...f}));
+  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds]}));
+  activeIndex.value=Math.max(0,Math.min(previous.activeIndex,cues.value.length-1));
+  effect.value=previous.effect;color.value=previous.color;speed.value=previous.speed;brightness.value=previous.brightness;
   selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
   selectedIds.value=previous.selectedIds?.filter(id=>fixtures.value.some(f=>f.id===id)) || [selectedId.value];
   if(!selectedIds.value.length)selectedIds.value=[selectedId.value];
@@ -132,8 +152,94 @@ function commitEdit() {
   editStart=null;
 }
 function normalizeCurrent() {
-  Object.assign(current.value,sanitizeFixture(current.value));
+  const clean=sanitizeFixture(current.value);
+  // Length and density, never a manually guessed total, define physical pixel count.
+  Object.assign(current.value,clean);
+  current.value.density=inferredDensity(current.value);
+  current.value.pixels=pixelCountFor(clean.length,current.value.density);
   commitEdit();
+}
+function chooseChip(event:Event){
+  const chip=(event.target as HTMLSelectElement).value;
+  const profile=CHIP_PROFILES.find(p=>p.id===chip);if(!profile)return;
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)if(!f.locked){
+    f.chip=chip;f.format=profile.format;f.density=inferredDensity(f);
+    f.pixels=pixelCountFor(f.length,f.density);
+  }
+  rememberScene(before);
+}
+function changeDensity(event:Event){
+  const n=Number((event.target as HTMLInputElement).value);
+  if(!Number.isFinite(n)||n<1||n>600)return;
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)if(!f.locked){
+    f.density=n;f.pixels=pixelCountFor(f.length,n);
+  }
+  rememberScene(before);
+}
+function paintSelection(event:Event){
+  const c=(event.target as HTMLInputElement).value;
+  if(!/^#[a-f0-9]{6}$/i.test(c))return;
+  beginEdit();
+  for(const f of selectedFixtures.value)if(!f.locked)f.tint=c;
+  selectedTint.value=c;
+}
+function toggleGroup(name:string){
+  collapsedGroups.value=collapsedGroups.value.includes(name)?collapsedGroups.value.filter(x=>x!==name):[...collapsedGroups.value,name];
+}
+function collapseAllGroups(){collapsedGroups.value=[...fixtureGroups.value];}
+function expandAllGroups(){collapsedGroups.value=[];}
+function startGroupRename(name:string){editingGroup.value=name;groupNameDraft.value=name;}
+function commitGroupRename(){
+  const old=editingGroup.value;editingGroup.value=null;
+  const name=groupNameDraft.value.trim().slice(0,40);
+  if(!old||!name||name===old)return;
+  const before=snapshotScene();
+  for(const f of fixtures.value)if(f.group===old && !f.locked)f.group=name;
+  collapsedGroups.value=collapsedGroups.value.filter(x=>x!==old);
+  rememberScene(before);
+}
+function togglePanel(name:keyof typeof collapsedPanels.value){
+  collapsedPanels.value[name]=!collapsedPanels.value[name];
+}
+function serializableProject(){
+  return {fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
+    autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value};
+}
+function persistLocal(){
+  if(!hydrated)return;
+  try {
+    localStorage.setItem(storageKey,stringifyStudioProject(serializableProject()));
+    saveState.value='SAVED';
+  }catch{saveState.value='ERROR';}
+}
+function scheduleSave(){
+  if(!hydrated)return;
+  saveState.value='PENDING';
+  if(saveTimer)clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{saveTimer=undefined;persistLocal();},650);
+}
+function restoreLocal(){
+  try{
+    const raw=localStorage.getItem(storageKey);
+    if(!raw)return;
+    const parsed=parseStudioProject(raw);
+    fixtures.value=parsed.fixtures as Fixture[];
+    cues.value=parsed.cues as Cue[];
+    selectedId.value=parsed.selectedId;selectedIds.value=parsed.selectedIds;
+    activeIndex.value=parsed.activeIndex;
+    collapsedGroups.value=parsed.collapsedGroups;
+    autoPlay.value=parsed.autoPlay;
+    speed.value=parsed.speed;brightness.value=parsed.brightness;
+    effect.value=cues.value[activeIndex.value]?.effect||'solid';
+    color.value=cues.value[activeIndex.value]?.color||'#ffffff';
+    saveState.value='RECOVERED';
+  }catch{saveState.value='ERROR'; /* Preserve corrupt local bytes for backup/manual recovery. */ }
+}
+function forgetLocal(){
+  if(!confirm('Reset local project and start from this current session? This deletes ONLY the saved browser copy.'))return;
+  try{localStorage.removeItem(storageKey);saveState.value='READY';}catch{saveState.value='ERROR';}
 }
 function disposeStrips() {
   if (!scene) return;
@@ -202,18 +308,21 @@ function syncTransform() {
   transformProxy.position.set(pivot.x,pivot.y,pivot.z);
   // Shared selection pivot rotates the whole group, not only the active fixture.
   transformProxy.rotation.set(0,0,0);
+  transformProxy.scale.set(1,1,1);
   updateGridAnchor();
   transform.attach(transformProxy);
   transform.setMode(toolMode.value);
-  transform.showX=toolMode.value==='translate';
+  transform.showX=toolMode.value==='translate'||toolMode.value==='scale';
   transform.showY=toolMode.value==='translate';
-  transform.showZ=true; // Rubans tournant dans le plan XY : rotation autour de Z.
+  transform.showZ=toolMode.value==='translate'||toolMode.value==='rotate';
+  transform.showXYZ=toolMode.value==='scale';
 }
 function updateTransformOptions() {
   if (!transform) return;
   transform.setMode(toolMode.value);
   transform.setTranslationSnap(positionSnap.value>0?positionSnap.value:null);
   transform.setRotationSnap(angleSnap.value>0?THREE.MathUtils.degToRad(angleSnap.value):null);
+  transform.setScaleSnap(null);
   syncTransform();
 }
 function updateGridAnchor() {
@@ -491,7 +600,7 @@ function addFixture() {
   const before=snapshotScene();
   const i=fixtures.value.length+1;
   const id='s'+crypto.randomUUID();
-  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:60,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:current.value.group,visible:true,locked:false});
+  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:current.value.group,visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff'});
   selectedId.value=id;selectedIds.value=[id];
   rememberScene(before);
 }
@@ -555,6 +664,7 @@ function onKey(e: KeyboardEvent) {
   if (e.code==='KeyG' && e.shiftKey){e.preventDefault();applyCue(Math.max(0,activeIndex.value-1));}
   if (e.code==='KeyM'){e.preventDefault();toolMode.value='translate';}
   if (e.code==='KeyR'){e.preventDefault();toolMode.value='rotate';}
+  if (e.code==='KeyS'){e.preventDefault();toolMode.value='scale';}
   if (e.code==='KeyF'){e.preventDefault();setView('ISO');}
   if (e.code==='Digit1'){setView('FRONT');}
   if (e.code==='Digit2'){setView('TOP');}
@@ -562,7 +672,8 @@ function onKey(e: KeyboardEvent) {
   if (e.code==='Delete'){e.preventDefault();deleteFixture();}
 }
 onMounted(()=>{
-  scene=new THREE.Scene();scene.background=new THREE.Color('#10151d');
+  restoreLocal();hydrated=true;
+  scene=new THREE.Scene();scene.background=new THREE.Color('#070809');
   camera=new THREE.PerspectiveCamera(48,1,0.02,1000);camera.position.set(7,4.7,8);
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
@@ -591,13 +702,15 @@ onMounted(()=>{
       y:transformProxy.position.y-dragPivot.y,z:transformProxy.position.z-dragPivot.z};
     const degrees=transformProxy.rotation.z*180/Math.PI;
     try {
-      const modified=transformGroup(dragBaseline,selectedIds.value,dragPivot,
-        toolMode.value==='translate'?delta:{x:0,y:0,z:0},
-        toolMode.value==='rotate'?degrees:0);
+      const modified=toolMode.value==='scale'
+        ?scaleSelected(dragBaseline,selectedIds.value,dragPivot,Math.max(.01,transformProxy.scale.x))
+        :transformGroup(dragBaseline,selectedIds.value,dragPivot,
+          toolMode.value==='translate'?delta:{x:0,y:0,z:0},
+          toolMode.value==='rotate'?degrees:0);
       const byId=new Map<string,Fixture>(modified.map((f: Fixture)=>[f.id,f]));
       for(const f of fixtures.value){
         const next=byId.get(f.id);
-        if(next){f.x=next.x;f.y=next.y;f.z=next.z;f.angle=next.angle;}
+        if(next){f.x=next.x;f.y=next.y;f.z=next.z;f.angle=next.angle;f.length=next.length;f.pixels=next.pixels;}
       }
       updateGridAnchor();
     } catch { /* Ignore transient out-of-bounds pointer input; no scene state is written. */ }
@@ -613,9 +726,13 @@ onMounted(()=>{
   rebuildScene();syncTransform();resize();sizeObserver=new ResizeObserver(resize);sizeObserver.observe(viewport.value!);
   frameSampleAt=performance.now();raf=requestAnimationFrame(frame);
   window.addEventListener('keydown',onKey);
+  window.addEventListener('beforeunload',persistLocal);
 });
 onUnmounted(()=>{
+  persistLocal();
+  if(saveTimer)clearTimeout(saveTimer);
   cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
+  window.removeEventListener('beforeunload',persistLocal);
   renderer?.domElement.removeEventListener('click',onSceneClick);
   renderer?.domElement.removeEventListener('contextmenu',onSceneContextMenu);
   document.removeEventListener('pointerdown',onOutsideMenu);
@@ -629,6 +746,7 @@ watch(fixtures,()=>{rebuildScene();syncTransform();},{deep:true});
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
+watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness],scheduleSave,{deep:true});
 </script>
 
 <template>
