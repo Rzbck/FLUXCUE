@@ -47,6 +47,18 @@ export function parseStudioProject(json){
  })):[];
  // New files have explicit, user-owned groups. Old 0.1 projects without this
  // list are migrated once, retaining historical STAGE/FLOOR group assignments.
+ // Only ungroup the FOUR known old demo placements. Other group names
+ // (including user-built legacy STAGE groups) are preserved on import.
+ if(!Array.isArray(d.groups)){
+  const demoNames=new Map([
+   ['s1',['STAGE / TOP','STAGE']],['s2',['LEFT / VERTICAL','STAGE']],
+   ['s3',['RIGHT / VERTICAL','STAGE']],['s4',['FLOOR / FRONT','FLOOR']]
+  ]);
+  for(const f of fixtures){
+   const legacy=demoNames.get(f.id);
+   if(legacy && f.name===legacy[0] && f.group===legacy[1])f.group='';
+  }
+ }
  const groups=Array.isArray(d.groups)
   ?d.groups.filter(g=>typeof g==='string'&&g.trim()&&g.trim().length<=40&&g.trim().toUpperCase()!=='UNGROUPED').slice(0,100)
   :fixtures.map(f=>f.group).filter(Boolean);

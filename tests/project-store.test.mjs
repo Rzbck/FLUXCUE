@@ -39,3 +39,15 @@ test('individual fixture colours are stored per cue and safely restored',()=>{
  assert.deepEqual(p.cues[0].looks,{s1:'#ff0000',s2:'#0000ff'});
  assert.equal(p.cues[0].color,'#abcdef');
 });
+
+test('old automatic STAGE/FLOOR demo fixtures migrate to UNGROUPED',()=>{
+ const defaults=[
+  {...fixture,id:'s1',name:'STAGE / TOP',group:'STAGE'},
+  {...fixture,id:'s2',name:'LEFT / VERTICAL',group:'STAGE'},
+  {...fixture,id:'s3',name:'RIGHT / VERTICAL',group:'STAGE'},
+  {...fixture,id:'s4',name:'FLOOR / FRONT',group:'FLOOR'}
+ ];
+ const result=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:defaults,cues:[cue]}));
+ assert.deepEqual(result.groups,[]);
+ assert.ok(result.fixtures.every(f=>f.group===''));
+});
