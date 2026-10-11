@@ -1,0 +1,25 @@
+{
+  "name": "fluxcue",
+  "private": true,
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "FLUXCUE 3D pixel lighting show studio — simulation-first prototype",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "three": "^0.180.0",
+    "vue": "^3.5.18"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.0",
+    "vue-tsc": "^3.1.0"
+  },
+  "engines": { "node": ">=22" }
+}
