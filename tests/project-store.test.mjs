@@ -31,3 +31,11 @@ test('unknown fixture group in explicit model is ungrouped, no auto-created grou
  const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture],cues:[cue],groups:[]}));
  assert.deepEqual(p.groups,[]);assert.equal(p.fixtures[0].group,'');
 });
+
+test('individual fixture colours are stored per cue and safely restored',()=>{
+ const f2={...fixture,id:'s2'};
+ const cueA={...cue,looks:{s1:'#ff0000',s2:'#0000ff',missing:'#abcdef'}};
+ const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture,f2],cues:[cueA]}));
+ assert.deepEqual(p.cues[0].looks,{s1:'#ff0000',s2:'#0000ff'});
+ assert.equal(p.cues[0].color,'#abcdef');
+});

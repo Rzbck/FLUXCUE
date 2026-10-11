@@ -16,10 +16,10 @@ import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
-type SceneSnapshot = { fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number };
+type SceneSnapshot = { fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string> };
 type ToolMode = 'translate' | 'rotate' | 'scale';
-type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number };
-type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number};
+type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
+type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>};
 const fixtures = ref<Fixture[]>([
   { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
   { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
@@ -53,6 +53,8 @@ const blackout=ref(false);
 const layerBudget=12;
 const selectedTint=ref('#ffffff');
 const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
+const cueDraftColors=ref<Record<string,string>>({});
+const activeCueFixtureColor=computed(()=>cueDraftColors.value[current.value.id]||color.value);
 const runningCueIds=computed(()=>new Set(activeLayers.value.map(l=>l.cueId)));
 let hydrated=false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -137,10 +139,10 @@ function resize() {
 }
 function snapshotScene(): SceneSnapshot {
   return { fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
-    cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds]})),
+    cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}})),
     selectedId:selectedId.value,selectedIds:[...selectedIds.value],
     activeIndex:activeIndex.value,editIndex:editIndex.value,effect:effect.value,
-    color:color.value,speed:speed.value,brightness:brightness.value };
+    color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value} };
 }
 function rememberScene(previous: SceneSnapshot) {
   const next=snapshotScene();
@@ -160,7 +162,13 @@ function recordUntrackedEdits(){
 function restoreScene(previous: SceneSnapshot) {
   fixtures.value=previous.fixtures.map(f=>({...f}));
   groups.value=[...previous.groups];
-  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds]}));
+  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}}));
+  cueDraftColors.value={...previous.cueDraftColors};
+  // When undoing an updated cue, running layers must show the restored look too.
+  for(const layer of activeLayers.value){
+    const cue=cues.value.find(c=>c.id===layer.cueId);
+    if(cue){layer.looks={...cue.looks};layer.color=cue.color;layer.effect=cue.effect;layer.speed=cue.speed;}
+  }
   activeIndex.value=Math.max(0,Math.min(previous.activeIndex,cues.value.length-1));
   editIndex.value=Math.max(0,Math.min(previous.editIndex,cues.value.length-1));
   effect.value=previous.effect;color.value=previous.color;speed.value=previous.speed;brightness.value=previous.brightness;
@@ -246,6 +254,24 @@ function paintSelection(event:Event){
 function tintSelectedExplicitly(){
   const before=snapshotScene();
   for(const f of selectedFixtures.value)if(!f.locked)f.tint=current.value.tint;
+  rememberScene(before);
+}
+function paintCueFixtureDraft(event:Event){
+  const value=(event.target as HTMLInputElement).value;
+  if(!/^#[0-9a-f]{6}$/i.test(value))return;
+  beginEdit();
+  cueDraftColors.value={...cueDraftColors.value,[current.value.id]:value};
+}
+function applyCueColorToSelection(){
+  const before=snapshotScene(),value=activeCueFixtureColor.value;
+  const next={...cueDraftColors.value};
+  for(const f of selectedFixtures.value)next[f.id]=value;
+  cueDraftColors.value=next;
+  rememberScene(before);
+}
+function clearCueFixtureOverrides(){
+  const before=snapshotScene();
+  cueDraftColors.value={};
   rememberScene(before);
 }
 function toggleGroup(name:string){
@@ -344,6 +370,7 @@ function restoreLocal(){
     autoNextTime=autoPlay.value?cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5):Infinity;
     effect.value=cues.value[activeIndex.value]?.effect||'solid';
     color.value=cues.value[activeIndex.value]?.color||'#ffffff';
+    cueDraftColors.value={...cues.value[editIndex.value]?.looks};
     saveState.value='RECOVERED';
   }catch{saveState.value='ERROR'; /* Preserve corrupt local bytes for backup/manual recovery. */ }
 }
@@ -625,10 +652,14 @@ function sampleCurrentPixel(f: Fixture, index: number, count: number, time: numb
   for(const layer of activeLayers.value){
     if(!cueAppliesTo(layer,f.id))continue;
     // The timing of each cue is independent; a later GO never resets prior effects.
-    sampleFx(layer.effect,layer.color,index,count,time-layer.started,colorB,f,layer.speed);
+    sampleFx(layer.effect,layer.looks[f.id]||layer.color,index,count,time-layer.started,colorB,f,layer.speed);
     rgb=composeRgb(rgb,[colorB.r,colorB.g,colorB.b],layerEnvelope(time,layer.started,layer.fade),layer.mode);
   }
-  return output.setRGB(rgb[0]*tint.r,rgb[1]*tint.g,rgb[2]*tint.b);
+  // Fixture tint is an independent default scene colour, not a second colour
+  // multiplier on a saved cue look (which would unexpectedly dim/recolour it).
+  return activeLayers.value.length
+    ?output.setRGB(rgb[0],rgb[1],rgb[2])
+    :output.setRGB(rgb[0]*tint.r,rgb[1]*tint.g,rgb[2]*tint.b);
 }
 function drawPixels(){
   for(const f of fixtures.value){
@@ -660,6 +691,7 @@ function editCue(index:number){
   const c=cues.value[index];
   effect.value=c.effect;color.value=c.color;speed.value=c.speed;
   cueTargetMode.value=c.targetIds.length?'SELECTION':'ALL';
+  cueDraftColors.value={...c.looks};
   if(c.targetIds.length){
     const ids=c.targetIds.filter(id=>fixtures.value.some(f=>f.id===id));
     if(ids.length){selectedIds.value=ids;selectedId.value=ids[0];}
@@ -671,7 +703,7 @@ function applyCue(index:number){
   blackout.value=false;
   // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
   const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
-    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35};
+    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35,looks:{...c.looks}};
   activeLayers.value=[...activeLayers.value.filter(l=>l.cueId!==c.id).slice(-(layerBudget-1)),layer];
   // GO changes only the live cue stack, never the editor's draft palette.
   fadeStarted.value=showTime;fadeSeconds.value=c.fade;
@@ -694,7 +726,7 @@ function addCue(){
   if(cues.value.length>=3000)return;
   const before=snapshotScene();
   const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
-    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value};
+    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value,looks:{...cueDraftColors.value}};
   cues.value.push(c);editIndex.value=cues.value.length-1;
   rememberScene(before);
 }
@@ -709,9 +741,10 @@ function updateCue(){
   const c=activeCue.value;if(!c)return;
   const before=snapshotScene();
   c.effect=effect.value;c.color=color.value;c.speed=speed.value;c.targetIds=captureCueTargets();
+  c.looks={...cueDraftColors.value};
   for(const layer of activeLayers.value)if(layer.cueId===c.id){
     layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;layer.speed=c.speed;
-    layer.targetIds=[...c.targetIds];layer.fade=c.fade;
+    layer.targetIds=[...c.targetIds];layer.fade=c.fade;layer.looks={...c.looks};
   }
   rememberScene(before);
 }
@@ -782,6 +815,7 @@ function loadProject(event:Event){
     undoStack.value=[];redoStack.value=[];editStart=null;
     effect.value=cues.value[activeIndex.value]?.effect || 'solid';
     color.value=cues.value[activeIndex.value]?.color || '#ffffff';
+    cueDraftColors.value={...cues.value[editIndex.value]?.looks};
     scheduleSave();
   }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
 }
@@ -905,7 +939,7 @@ watch([positionSnap,showGrid],updateGrid);
 watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,activeLayers,running,blackout],scheduleSave,{deep:true});
 // Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
 // Flush after the event so one user operation produces one history item.
-watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness],
+watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueDraftColors],
   recordUntrackedEdits,{deep:true,flush:'post'});
 </script>
 
@@ -1099,10 +1133,20 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
         </label>
         <button class="tint-batch-button" :disabled="selectionCount<2" @click="tintSelectedExplicitly">APPLY ACTIVE COLOUR TO {{selectionCount}} SELECTED STRIPS</button>
         <div class="panel-note">This picker changes ONLY the active strip. Use the button to apply the same filter to multiple selected strips.</div>
-        <label class="field"><span>CUE COLOUR (DRAFT)</span><div class="control">
-          <input v-model="color" aria-label="Cue draft color only" type="color" @pointerdown="beginEdit" @change="commitEdit"/>
+        <label class="field"><span>CUE DEFAULT COLOUR</span><div class="control">
+          <input v-model="color" aria-label="Default cue color" type="color" @pointerdown="beginEdit" @change="commitEdit"/>
           <b class="hex mono">{{color.toUpperCase()}}</b>
         </div></label>
+        <label class="field"><span>CUE LOOK · ACTIVE STRIP</span><div class="control">
+          <input type="color" aria-label="Different color for this fixture in selected cue"
+            :value="activeCueFixtureColor" @pointerdown="beginEdit" @input="paintCueFixtureDraft" @change="commitEdit"/>
+          <b class="hex mono">{{activeCueFixtureColor.toUpperCase()}}</b>
+        </div></label>
+        <div class="cue-look-actions">
+          <button @click="applyCueColorToSelection" :disabled="selectionCount<2">APPLY LOOK TO SELECTED ({{selectionCount}})</button>
+          <button @click="clearCueFixtureOverrides">CLEAR OVERRIDES</button>
+        </div>
+        <div class="panel-note">Each fixture can have a different colour in ONE cue. Select a strip, set its cue colour, then UPDATE SELECTED CUE or SAVE AS NEW CUE.</div>
         <label class="field"><span>Speed</span><div class="control"><input v-model.number="speed" type="range" min="0" max="3" step="0.01"/><span class="value">{{ speed.toFixed(2) }}</span></div></label>
         <label class="field"><span>Brightness</span><div class="control"><input v-model.number="brightness" type="range" min="0" max="1" step="0.01"/><span class="value">{{ Math.round(brightness*100) }}%</span></div></label>
         </template><button class="section-collapse inspector-section" @click="togglePanel('pixel')" :aria-expanded="!collapsedPanels.pixel">{{collapsedPanels.pixel?'▸':'▾'}} PIXEL / VIRTUAL PATCH</button>
