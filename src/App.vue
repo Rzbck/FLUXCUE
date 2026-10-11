@@ -27,10 +27,10 @@ const fixtures = ref<Fixture[]>([
   { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
 ]);
 const cues = ref<Cue[]>([
-  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35 },
-  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35 },
-  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35 },
-  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35 }
+  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
+  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35,looks:{} },
+  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
+  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35,looks:{} }
 ]);
 const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
