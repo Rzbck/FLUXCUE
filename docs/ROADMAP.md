@@ -75,3 +75,12 @@ No dates promised until milestones' acceptance tests pass.
 - [x] Internal Ctrl+C/V fixtures, drag undo history semantics, single selected cue look edit with instant local preview. PR CI 38176316520 green 75/75.
 - [ ] Full branch/docs gate, merged deployment and real Brave optical/Undo acceptance.
 - [ ] Later: physically calibrated lens/spatial photometry, real emitter normals per fixture, advanced bloom, spline/GLB geometry, performance benchmark.
+
+## Audit-informed operator release gates (PR #22, 2026-10-11)
+- [x] 13-repository feature/architecture comparison and explicit licensing concerns: docs/AUDIT_STUDIO_PRODUCT_GAPS_2026-10-11.md.
+- [x] Exact-snapshot Undo fix; Chrome real pointer X drag + Ctrl+Z proof, 81 Node tests; user Brave acceptance still pending.
+- [x] 11 new deterministic patterns; sampled 3D stage lighting/shadows/bloom with ≤8 dynamic light sources, cache spatial pixel positions.
+- [ ] Final protected PR CI/merge and Pages deploy; manual Brave evidence.
+- [ ] P0: complete mouse QA for all gizmo axes and multi-selection, 1k/10k/50k performance, reusable FX parameter/modifier library, patch validator.
+- [ ] P1: multi-track editable timeline, GLB scenery, spline strips, media/audio mapping, revisioned project model.
+- [ ] Before production: headless deterministic site engine, localhost Art-Net/sACN test packets, standalone site fallback, license and security signoffs.
