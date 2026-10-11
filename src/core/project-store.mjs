@@ -1,4 +1,5 @@
 import {inferredDensity,normalizedChip} from './hardware.mjs';
+import {optics} from './led-optics.mjs';
 const effects=new Set(['solid','rainbow','chase','gradient','spatial-wave','spatial-blocks']);
 const hex=v=>typeof v==='string'&&/^#[a-f0-9]{6}$/i.test(v);
 const finite=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
@@ -18,7 +19,8 @@ export function parseStudioProject(json){
   return {id:f.id,name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,
    format:f.format,group:typeof f.group==='string'?f.group.trim().slice(0,40):'',
    visible:f.visible!==false,locked:f.locked===true,
-   chip:normalizedChip(f),density:inferredDensity(f),tint:hex(f.tint)?f.tint:'#ffffff'};
+   chip:normalizedChip(f),density:inferredDensity(f),tint:hex(f.tint)?f.tint:'#ffffff',
+   ...optics(f)};
  });
  const cueIds=new Set();
  const cues=d.cues.map(c=>{

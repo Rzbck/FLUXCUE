@@ -69,3 +69,9 @@ No dates promised until milestones' acceptance tests pass.
 ## v0.2.1 cue target composition and editable project name (2026-10-11)
 - [x] Cue multi-fixture target lists persist while selecting other fixtures; uncommitted draft autosave, user-named shows, neutral default fixture names; PR CI 38172445001 71 PASS.
 - [ ] Protected PR merge, public Pages deploy and manual Brave regression before closing #8 or #4.
+
+## Optical realism and instant cue workflow (PR #21, 2026-10-11)
+- [x] SMD 5mm-scale directional emitters instead of oversized balls; optional dual-sided and diffuse optics, persisted fixture settings.
+- [x] Internal Ctrl+C/V fixtures, drag undo history semantics, single selected cue look edit with instant local preview. PR CI 38176316520 green 75/75.
+- [ ] Full branch/docs gate, merged deployment and real Brave optical/Undo acceptance.
+- [ ] Later: physically calibrated lens/spatial photometry, real emitter normals per fixture, advanced bloom, spline/GLB geometry, performance benchmark.

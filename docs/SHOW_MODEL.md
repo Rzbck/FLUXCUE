@@ -52,3 +52,7 @@ Original pure scenePixelPosition, virtualPixelRows and createFixtureArray functi
 
 ## Uncommitted editor cue draft (2026-10-11)
 New optional locally persisted `editorDraft`: `cueIndex`, `effect`, `color`, `speed`, `targetMode`, explicit `targetIds` and per-fixture `looks`. Draft targets remain stable when active fixture selection moves; never infer previous targets solely from current selection. Before output is enabled, a future schema must distinguish empty custom target set from ALL to eliminate ambiguity.
+
+## Optical fixture extensions (PR #21)
+- `ledSizeMm` (2–8mm, default 5); `emitterMode` = front (+Z) or dual (+Z/-Z), `diffuser` = none, flat, tube. Optical metadata is versioned in the local browser JSON, default-migrated, and used only in 3D visualization. This is not photometry or independent physical network fixture output.
+- Clipboard duplicated instances preserve every fixture optical/LED chip/density/group property except ID/name/offset and lock state.

@@ -234,3 +234,14 @@ input[type=range],input[type=checkbox]{accent-color:#bdbdbd}
 .project-name-input{max-width:195px;min-width:92px;width:15vw;background:#171717;border:1px solid #3a3a3a;color:#e4e4e4;
  font-weight:750;font-size:10px;letter-spacing:.45px;padding:5px 8px;border-radius:3px}
 .project-name-input:focus{outline:1px solid #ddd}
+
+/* Compact, direct cue editor: a single obvious effect and colour per selection. */
+.cue-direct-tip{padding:8px 12px;color:#bdbdbd;background:#1a1a1a;
+ font-size:9px;font-weight:750;letter-spacing:.7px;border-bottom:1px solid #303030}
+.cue-direct-actions{display:flex;gap:5px;padding:5px 12px;flex-wrap:wrap}
+.cue-direct-actions button{background:#292929;color:#ededed;border:1px solid #484848;
+ border-radius:3px;padding:8px 9px;font-size:9px;font-weight:750}
+.cue-direct-actions button:hover{background:#3a3a3a}
+.cue-direct-actions button:first-child{border-color:#9e9e9e}
+.cue-direct-actions button.active{border-color:#b6bdaf;background:#30372c}
+.editor-tools button kbd{margin-left:3px;font-size:8px;color:#909090}
