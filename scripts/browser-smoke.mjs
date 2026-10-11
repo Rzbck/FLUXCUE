@@ -73,8 +73,6 @@ try{
  }
  if(!ready)throw new Error('Studio did not mount WebGL / smoke hook: '+errors.join('; '));
  console.log('GIZMO POINTER CANDIDATES:',JSON.stringify(await evaluate('window.__FLUXCUE_SMOKE__.pointerCandidates()')));
- const initial=await evaluate('window.__FLUXCUE_SMOKE__.state()');
- assert.ok(Number.isFinite(initial.x),'Fixture position is finite');
  const key=async(modifiers=2)=>{
   await send('Input.dispatchKeyEvent',{type:'rawKeyDown',modifiers,
    windowsVirtualKeyCode:90,nativeVirtualKeyCode:90,code:'KeyZ',key:'z'});
@@ -82,6 +80,33 @@ try{
    windowsVirtualKeyCode:90,nativeVirtualKeyCode:90,code:'KeyZ',key:'z'});
   await delay(160);
  };
+ const picker=await evaluate('window.__FLUXCUE_SMOKE__.pointerCandidates()');
+ if(picker?.candidates?.length){
+  const testX=picker.candidates.at(-1);
+  const beforePointer=await evaluate('window.__FLUXCUE_SMOKE__.state()');
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:testX.x,y:testX.y});
+  await delay(150);
+  await send('Input.dispatchMouseEvent',{type:'mousePressed',x:testX.x,y:testX.y,
+    button:'left',buttons:1,clickCount:1});
+  await delay(120);
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:testX.x+70,y:testX.y+8,
+    button:'left',buttons:1});
+  await delay(150);
+  await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:testX.x+70,y:testX.y+8,
+    button:'left',buttons:0,clickCount:1});
+  await delay(200);
+  const afterPointer=await evaluate('window.__FLUXCUE_SMOKE__.state()');
+  console.log('REAL POINTER PROBE',JSON.stringify({candidate:testX,before:beforePointer,after:afterPointer}));
+  if(Math.abs(afterPointer.x-beforePointer.x)>.01){
+    await key(2);
+    const restored=await evaluate('window.__FLUXCUE_SMOKE__.state()');
+    assert.ok(Math.abs(restored.x-beforePointer.x)<.001,
+     'REAL pointer gizmo drag Ctrl+Z failed '+JSON.stringify({beforePointer,afterPointer,restored}));
+    console.log('REAL MOUSE PASS: X gizmo moved, real Ctrl+Z restored old XYZ');
+  } else console.warn('REAL MOUSE NOT CONFIRMED: test picker did not move under Chrome input injection');
+ }
+ const initial=await evaluate('window.__FLUXCUE_SMOKE__.state()');
+ assert.ok(Number.isFinite(initial.x),'Fixture position is finite');
  for(let i=0;i<3;i++){
   const before=await evaluate('window.__FLUXCUE_SMOKE__.state()');
   const dragged=await evaluate("window.__FLUXCUE_SMOKE__.drag('x',0.7)");
