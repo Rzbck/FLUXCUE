@@ -82,4 +82,4 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 ### Extended editor acceptance
 - [x] Unit-tested 3D selection and centroid transforms, spatial FX, pixel/DMX export, parametric layout generation.
 - [ ] Browser at both target resolutions: multi-click, right-click menu, group gizmo, lock/hide, array generator, Wave/Blocks and CSV.
-- [ ] Protected PR merge; public Pages deployment.
+- [x] PR #17 merged at 8eb486a9. Main CI 38163376238 SUCCESS, public Pages deployment 38163376412 SUCCESS; manually verified interactive Brave gestures still open.
