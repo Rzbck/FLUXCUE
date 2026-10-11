@@ -63,3 +63,10 @@ test('uncommitted cue look draft and multiple target fixtures survive autosave',
  assert.equal(p.editorDraft.looks.s2,'#0000ff');
  assert.equal(p.editorDraft.effect,'solid');
 });
+
+test('editable project title survives a JSON backup without leaking other metadata',()=>{
+ const p=parseStudioProject(stringifyStudioProject({project:{name:'Stage Research'},
+  fixtures:[fixture],cues:[cue],groups:[]}));
+ assert.equal(p.projectName,'Stage Research');
+ assert.equal(p.fixtures[0].id,'s1');
+});

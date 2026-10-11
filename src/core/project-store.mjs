@@ -80,7 +80,8 @@ export function parseStudioProject(json){
    looks:draftLooks};
  const selectedId=typeof d.selectedId==='string'&&ids.has(d.selectedId)?d.selectedId:fixtures[0].id;
  const selectedIds=Array.isArray(d.selectedIds)?d.selectedIds.filter(id=>ids.has(id)).slice(0,500):[selectedId];
- return {fixtures,cues,groups:distinctGroups,editorDraft,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
+ return {projectName:typeof d.project?.name==='string' && d.project.name.trim()?d.project.name.trim().slice(0,80):'UNTITLED PROJECT',
+  fixtures,cues,groups:distinctGroups,editorDraft,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
   activeIndex:Number.isInteger(d.activeIndex)?Math.max(0,Math.min(cues.length-1,d.activeIndex)):0,
   collapsedGroups:Array.isArray(d.collapsedGroups)?d.collapsedGroups.filter(s=>typeof s==='string').slice(0,100):[],
   collapsedPanels:Object.fromEntries(['scene','arrays','patch','cues','geometry','effects','pixel'].map(k=>[k,d.collapsedPanels?.[k]===true])),

@@ -17,15 +17,15 @@ import {commitHistory,stepHistory} from './core/editor-history.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
-type SceneSnapshot = { fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
+type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
 type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>};
 const fixtures = ref<Fixture[]>([
-  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
-  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
+  { id:'s1',name:'LED STRIP / 01',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
+  { id:'s2',name:'LED STRIP / 02',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s3',name:'LED STRIP / 03',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s4',name:'LED STRIP / 04',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
 ]);
 const cues = ref<Cue[]>([
   { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
@@ -37,6 +37,7 @@ const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
 const contextMenu = ref({visible:false,x:0,y:0});
 const groups=ref<string[]>([]);
+const projectName=ref('UNTITLED PROJECT');
 const newGroupName=ref('');
 const bulkGroup=ref('');
 const draggedFixtureIds=ref<string[]>([]);
@@ -141,7 +142,7 @@ function resize() {
   renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
-  return { fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
+  return { projectName:projectName.value,fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
     cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}})),
     selectedId:selectedId.value,selectedIds:[...selectedIds.value],
     activeIndex:activeIndex.value,editIndex:editIndex.value,effect:effect.value,
@@ -164,6 +165,7 @@ function recordUntrackedEdits(){
   if(!sameScene(historyBaseline,next))rememberScene(historyBaseline);
 }
 function restoreScene(previous: SceneSnapshot) {
+  projectName.value=previous.projectName;
   fixtures.value=previous.fixtures.map(f=>({...f}));
   groups.value=[...previous.groups];
   cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}}));
@@ -343,7 +345,7 @@ function togglePanel(name:keyof typeof collapsedPanels.value){
   collapsedPanels.value[name]=!collapsedPanels.value[name];
 }
 function serializableProject(){
-  return {fixtures:fixtures.value,groups:groups.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
+  return {project:{name:projectName.value},fixtures:fixtures.value,groups:groups.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
     autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,collapsedPanels:collapsedPanels.value,
     editorDraft:{cueIndex:editIndex.value,effect:effect.value,color:color.value,speed:speed.value,
       targetMode:cueTargetMode.value,targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value},
@@ -367,6 +369,7 @@ function restoreLocal(){
     const raw=localStorage.getItem(storageKey);
     if(!raw)return;
     const parsed=parseStudioProject(raw);
+    projectName.value=parsed.projectName;
     fixtures.value=parsed.fixtures as Fixture[];
     groups.value=parsed.groups;
     cues.value=parsed.cues as Cue[];
@@ -847,6 +850,7 @@ function loadProject(event:Event){
   file.text().then(raw=>{
     const p=parseStudioProject(raw);
     // Atomic replacement only after every fixture and cue passed validation.
+    projectName.value=p.projectName;
     fixtures.value=p.fixtures as Fixture[];
     cues.value=p.cues as Cue[];
     selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
@@ -979,10 +983,10 @@ watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.vi
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
-watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,activeLayers,running,blackout],scheduleSave,{deep:true});
+watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,activeLayers,running,blackout],scheduleSave,{deep:true});
 // Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
 // Flush after the event so one user operation produces one history item.
-watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors],
+watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors],
   recordUntrackedEdits,{deep:true,flush:'post'});
 </script>
 
@@ -990,14 +994,15 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
   <div class="shell">
     <header class="top">
       <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>0.1 ALPHA</small></span></div>
-      <div class="top-center"><span class="project-name">DEMO INSTALLATION</span><span class="separator"></span><span class="muted">SHOW A</span></div>
+      <div class="top-center"><input class="project-name-input" aria-label="Current project name" v-model="projectName" maxlength="80"
+          @focus="beginEdit" @change="commitEdit" /><span class="separator"></span><span class="muted">SHOW A</span></div>
       <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':saveState==='READY'?'LOCAL READY':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
     </header>
     <div class="workspace">
       <aside class="sidebar left">
         <div class="panel-title"><span>SCENE / PATCH</span><span class="mono muted">01</span></div>
         <div class="search"><span>⌕ FIXTURES · {{fixtures.length}}</span><div class="group-actions"><button @click="collapseAllGroups" title="Collapse all groups">COLLAPSE</button><button @click="expandAllGroups" title="Expand all groups">EXPAND</button></div></div>
-        <div class="tree-heading">⌄ &nbsp; DEMO INSTALLATION <span class="site-dot"></span></div>
+        <div class="tree-heading">⌄ &nbsp; {{projectName||'UNTITLED PROJECT'}} <span class="site-dot"></span></div>
         <div class="group-create">
           <input v-model="newGroupName" maxlength="40" aria-label="New group name" placeholder="NEW GROUP NAME" @keydown.enter="createGroup"/>
           <button @click="createGroup" title="Create named empty group">＋ GROUP</button>
