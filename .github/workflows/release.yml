@@ -18,7 +18,7 @@ jobs:
       ci_url: ${{ steps.verify.outputs.ci_url }}
     steps:
       - name: Checkout exact trusted main commit (no saved credentials)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5, node24
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
@@ -38,7 +38,7 @@ jobs:
           echo "ci_url=$ci_url" >> "$GITHUB_OUTPUT"
           echo "Public CI confirmed for exact source SHA."
       - name: Set up Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5, node24
         with:
           node-version: '22'
       - name: Scan committed public files before installing
@@ -67,7 +67,7 @@ jobs:
           jq -n -S --arg version "$VERSION" --arg source_sha "$GITHUB_SHA" --arg ci_url "$CI_URL"             --arg archive "$name" --arg sha256 "$digest"             '{schema:1,product:"FLUXCUE Studio",mode:"SIMULATOR",version:$version,source_sha:$source_sha,ci_url:$ci_url,archive:$archive,sha256:$sha256}' > release/manifest.json
           (cd release && sha256sum --check SHA256SUMS)
       - name: Upload audited static package (NO SSH OR VPS ACCESS)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, node24
         with:
           name: studio-${{ github.sha }}
           path: release/
@@ -84,7 +84,7 @@ jobs:
       contents: write
     steps:
       - name: Download only the built release files
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7, node24
         with:
           name: studio-${{ github.sha }}
           path: release
