@@ -560,11 +560,15 @@ function applyCue(index:number){
   autoNextTime=cueNextAt(showTime,c.hold||5);
   running.value=true;
 }
-function stopCue(id:string){activeLayers.value=activeLayers.value.filter(l=>l.cueId!==id);}
-function stopAllCues(){activeLayers.value=[];autoNextTime=Infinity;autoPlay.value=false;}
+function stopCue(id:string){activeLayers.value=activeLayers.value.filter(l=>l.cueId!==id);scheduleSave();}
+function stopAllCues(){activeLayers.value=[];autoNextTime=Infinity;autoPlay.value=false;scheduleSave();}
 function toggleAutoPlay(){
   autoPlay.value=!autoPlay.value;
-  if(autoPlay.value && !Number.isFinite(autoNextTime) && cues.value.length)applyCue(activeIndex.value);
+  if(autoPlay.value){
+    // Set a fresh cue duration, even if the stack was already playing manually.
+    if(cues.value.length)autoNextTime=cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5);
+    if(!activeLayers.value.length && cues.value.length)applyCue(activeIndex.value);
+  }
 }
 function captureCueTargets(){return cueTargetMode.value==='ALL'?[]:[...selectedIds.value];}
 function addCue(){
@@ -834,21 +838,46 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
           <div class="viewport-details">Z UP? <b>Y UP</b> &nbsp; · &nbsp; <b>{{ totalPixels }}</b> LEDS</div>
           <div class="viewport-axis">X <span>Y</span> Z</div>
         </div>
-        <section class="cue-panel">
-          <div class="cue-toolbar"><div class="tabs"><button class="tab active">CUE STACK</button><button class="tab" disabled>EFFECT GRAPH · NEXT</button></div><span class="muted">SHOW A &nbsp; / &nbsp; {{ cues.length }} CUES</span></div>
-          <div class="transport"><button class="transport-btn" @click="applyCue(Math.max(0,activeIndex-1))">← BACK</button><button class="transport-btn" @click="running=!running">{{ running?'Ⅱ PAUSE':'▶ PLAY' }}</button><button class="go-btn" @click="applyCue((activeIndex+1)%cues.length)">GO →</button><span class="clock mono">{{ timeLabel }}</span><button class="transport-btn reset-clock" title="Reset simulated show clock" @click="resetClock">↺ RESET</button><span class="muted transport-mode">CLOCK · SIMULATOR</span></div>
-          <div class="cue-fade-bar" role="progressbar" :aria-valuenow="Math.round(fadeProgress*100)" aria-valuemin="0" aria-valuemax="100" aria-label="Active cue transition progress"><span :style="{ width: (fadeProgress*100)+'%' }"></span></div>
-          <div class="cue-list"><button v-for="(c,i) in cues" :key="c.id" class="cue-row" :class="{playing:activeIndex===i}" @click="applyCue(i)">
-            <span class="cue-number">{{ String(i+1).padStart(2,'0') }}</span><span class="cue-caret">{{ activeIndex===i?'▶':'·' }}</span><span class="cue-name">{{ c.name }}</span><span class="cue-effect">{{ c.effect.toUpperCase() }}</span><span class="cue-fade">{{ c.fade.toFixed(1) }}s</span>
-          </button></div>
-          <div class="cue-edit">
-            <label class="cue-edit-name">CUE <input aria-label="Active cue name" v-model="activeCue.name" maxlength="100" /></label>
-            <label class="cue-edit-fade">FADE <input aria-label="Active cue fade seconds" v-model.number="activeCue.fade" type="number" min="0" max="120" step="0.1" /><span>s</span></label>
-            <button class="cue-edit-button" title="Move cue up" :disabled="activeIndex===0" @click="moveActiveCue(-1)">↑</button>
-            <button class="cue-edit-button" title="Move cue down" :disabled="activeIndex===cues.length-1" @click="moveActiveCue(1)">↓</button>
-            <button class="cue-edit-button danger" title="Remove active cue" :disabled="cues.length<2" @click="removeActiveCue">DELETE</button>
+        <section class="cue-panel" :class="{compact:collapsedPanels.cues}">
+          <div class="cue-toolbar"><button class="cue-collapse" @click="togglePanel('cues')" :aria-expanded="!collapsedPanels.cues">{{collapsedPanels.cues?'▸':'▾'}} CUE STACK <small>{{cues.length}} CUES / {{activeLayers.length}} RUNNING</small></button><span class="muted">INDEPENDENT LAYERS · SIM</span></div>
+          <div v-if="!collapsedPanels.cues" class="cue-content">
+            <div class="transport">
+              <button class="transport-btn" @click="applyCue(Math.max(0,activeIndex-1))">← BACK</button>
+              <button class="transport-btn" @click="running=!running">{{running?'Ⅱ PAUSE':'▶ PLAY'}}</button>
+              <button class="go-btn" @click="applyCue((activeIndex+1)%cues.length)">GO →</button>
+              <button class="transport-btn" :class="{autoactive:autoPlay}" @click="toggleAutoPlay">AUTO {{autoPlay?autoplayCountdown:'OFF'}}</button>
+              <button class="transport-btn danger" @click="stopAllCues">■ STOP ALL</button>
+              <span class="clock mono">{{timeLabel}}</span>
+              <button class="transport-btn reset-clock" @click="resetClock">↺ RESET</button>
+            </div>
+            <div class="cue-fade-bar" role="progressbar" :aria-valuenow="Math.round(fadeProgress*100)" aria-valuemin="0" aria-valuemax="100" aria-label="Active cue transition progress"><span :style="{width:(fadeProgress*100)+'%'}"></span></div>
+            <div class="cue-list">
+              <div v-for="(c,i) in cues" :key="c.id" class="cue-row" :class="{playing:activeIndex===i,layerOn:runningCueIds.has(c.id)}">
+                <button class="cue-select" @click="applyCue(i)" :title="'GO '+c.name">
+                  <span class="cue-number">{{String(i+1).padStart(2,'0')}}</span><span class="cue-caret">{{runningCueIds.has(c.id)?'●':'·'}}</span>
+                  <span class="cue-name">{{c.name}}</span><span class="cue-effect">{{c.effect.toUpperCase()}}</span>
+                  <span class="cue-fade">{{Number(c.fade).toFixed(1)}}s</span>
+                  <span class="cue-target">{{c.targetIds.length?c.targetIds.length+' LED STRIPS':'ALL'}}</span>
+                </button>
+                <button v-if="runningCueIds.has(c.id)" class="cue-stop" :title="'Stop only '+c.name" @click="stopCue(c.id)">■</button>
+              </div>
+            </div>
+            <div class="cue-edit">
+              <label class="cue-edit-name">CUE <input aria-label="Cue name" v-model="activeCue.name" maxlength="100" @focus="beginEdit" @change="commitEdit"/></label>
+              <label class="cue-edit-fade">FADE <input aria-label="Fade seconds" v-model.number="activeCue.fade" type="number" min="0" max="120" step=".1" @focus="beginEdit" @change="normalizeCue"/></label>
+              <label class="cue-edit-fade">HOLD <input aria-label="Autoplay hold seconds" v-model.number="activeCue.hold" type="number" min=".1" max="3600" step=".5" @focus="beginEdit" @change="normalizeCue"/></label>
+              <label class="cue-edit-fade">MIX <select v-model="activeCue.mode" @focus="beginEdit" @change="commitEdit"><option>ADD</option><option>REPLACE</option></select></label>
+              <button class="cue-edit-button" :disabled="activeIndex===0" @click="moveActiveCue(-1)">↑</button>
+              <button class="cue-edit-button" :disabled="activeIndex===cues.length-1" @click="moveActiveCue(1)">↓</button>
+              <button class="cue-edit-button danger" :disabled="cues.length<2" @click="removeActiveCue">✕</button>
+            </div>
+            <div class="cue-actions">
+              <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">SELECTED FIXTURES</option><option value="ALL">ALL FIXTURES</option></select></label>
+              <span class="cue-hint">CUE DRAFT FX + COLOR →</span>
+              <button class="cue-update" @click="updateCue" title="Overwrite selected cue's effect/color/targets, without stopping other running cues">↻ UPDATE CUE</button>
+              <button class="cue-new" @click="addCue">＋ NEW CUE</button>
+            </div>
           </div>
-          <button class="new-cue" @click="addCue">＋ NEW CUE FROM CURRENT LOOK</button>
         </section>
       </main>
       <aside class="sidebar inspector">
