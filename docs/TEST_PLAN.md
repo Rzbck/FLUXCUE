@@ -74,7 +74,12 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Verify 1920x1080 and 1366x768; no credentials or network output from preview.
 
 ## Multi-select and world-space FX batch
-- [ ] CI: no errors, old + new tests, both Pages and release builds plus security scan.
+- [x] PR #17 CI 38163184921: 42/42 tests, Vue typecheck and ordinary/Pages builds, source/dist scanner and path validator PASS. Release workflow NOT RUN.
 - [ ] UI at 1920x1080/1366x768: Ctrl/Shift multiple strips in viewport/outliner, right-click menu, batch transforms, align and lock/hide.
 - [ ] Group angle 90° around shared pivot, double GO, old JSON import, new spatial FX and export.
 - [ ] Manual Brave smoke after GitHub Pages deployment. Preview only; no server output.
+
+### Extended editor acceptance
+- [x] Unit-tested 3D selection and centroid transforms, spatial FX, pixel/DMX export, parametric layout generation.
+- [ ] Browser at both target resolutions: multi-click, right-click menu, group gizmo, lock/hide, array generator, Wave/Blocks and CSV.
+- [ ] Protected PR merge; public Pages deployment.

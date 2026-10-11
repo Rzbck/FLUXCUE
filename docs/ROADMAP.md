@@ -47,3 +47,7 @@ No dates promised until milestones' acceptance tests pass.
 - [ ] PR multi-object move/rotate, Ctrl/Shift and context menu, batch groups/visibility/locking, align, history tests PASS.
 - [ ] Spatial pure pixel coordinates and two 3D preview effects PASS.
 - [ ] Site published with green deployment and verified by user in Brave.
+
+## PR #17 integrated editor sprint (2026-10-11)
+- [x] Green CI 38163184921: multiselect/context menu group editor, world-space effects, virtual pixel CSV inspector and parametric generator; 42/42 tests.
+- [ ] Public Pages deploy and manual Brave smoke.
