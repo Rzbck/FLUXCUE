@@ -70,6 +70,7 @@ const undoStack = ref<SceneSnapshot[]>([]);
 const redoStack = ref<SceneSnapshot[]>([]);
 const activeIndex = ref(1);
 const activeCue = computed(() => cues.value[activeIndex.value] ?? cues.value[0]);
+const autoplayCountdown = computed(() => autoPlay.value && Number.isFinite(autoNextTime) ? Math.max(0,autoNextTime-showSeconds.value).toFixed(1)+'s' : 'OFF');
 const running = ref(true);
 const effect = ref<Fx>('rainbow');
 const color = ref('#79b8ff');
@@ -392,6 +393,11 @@ function selectAll() {
   selectedId.value=selectedIds.value[0];
   contextMenu.value.visible=false;
 }
+function selectGroupByName(group:string){
+  const ids=fixtures.value.filter(f=>f.group===group).map(f=>f.id);
+  if(!ids.length)return;
+  selectedIds.value=ids;selectedId.value=ids[0];contextMenu.value.visible=false;
+}
 function selectGroup() {
   const group=current.value.group;
   selectedIds.value=fixtures.value.filter(f=>f.group===group).map(f=>f.id);
@@ -556,6 +562,10 @@ function applyCue(index:number){
 }
 function stopCue(id:string){activeLayers.value=activeLayers.value.filter(l=>l.cueId!==id);}
 function stopAllCues(){activeLayers.value=[];autoNextTime=Infinity;autoPlay.value=false;}
+function toggleAutoPlay(){
+  autoPlay.value=!autoPlay.value;
+  if(autoPlay.value && !Number.isFinite(autoNextTime) && cues.value.length)applyCue(activeIndex.value);
+}
 function captureCueTargets(){return cueTargetMode.value==='ALL'?[]:[...selectedIds.value];}
 function addCue(){
   if(cues.value.length>=3000)return;
@@ -564,6 +574,13 @@ function addCue(){
     effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets()};
   cues.value.push(c);activeIndex.value=cues.value.length-1;
   rememberScene(before);
+}
+function normalizeCue(){
+  const c=activeCue.value;
+  if(!c)return;
+  c.fade=Number.isFinite(c.fade)?Math.min(120,Math.max(0,c.fade)):1;
+  c.hold=Number.isFinite(c.hold)?Math.min(3600,Math.max(.1,c.hold)):5;
+  commitEdit();
 }
 function updateCue(){
   const c=activeCue.value;if(!c)return;
@@ -613,36 +630,30 @@ function exportPixelCsv() {
   } catch(error){alert('Pixel CSV export failed: '+String(error));}
 }
 function saveProject() {
-  const data={schemaVersion:'0.1.0',project:{name:'FLUXCUE Demo'},fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  persistLocal();
+  const blob=new Blob([JSON.stringify(JSON.parse(stringifyStudioProject(serializableProject())),null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const anchor=document.createElement('a');anchor.href=url;anchor.download='fluxcue-demo.json';anchor.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-function loadProject(event: Event) {
-  const file=(event.target as HTMLInputElement).files?.[0];
-  if (!file||file.size>2_000_000) { alert('Invalid or oversized project file (max 2MB)');return; }
-  file.text().then(text=>{
-    const data=JSON.parse(text);
-    if (data.schemaVersion!=='0.1.0'||!Array.isArray(data.fixtures)||!Array.isArray(data.cues)||data.fixtures.length>500||data.cues.length>3000)throw new Error('Invalid project');
-    const seenIds=new Set<string>();
-    const restored:Fixture[]=data.fixtures.map((f:Fixture)=>{
-      if (!f||typeof f.id!=='string'||typeof f.name!=='string'||!Number.isInteger(f.pixels)||f.pixels<1||f.pixels>2000||!Number.isFinite(f.length)||f.length<=0||f.length>100||!['RGB','RGBW'].includes(f.format)||![f.x,f.y,f.z,f.angle].every(x=>Number.isFinite(x)))throw new Error('Invalid fixture');
-      const id=f.id.slice(0,80);
-      if(!id || seenIds.has(id))throw new Error('Duplicate fixture ID');
-      seenIds.add(id);
-      return {id,name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,format:f.format,
-        group:typeof f.group==='string'&&f.group.trim() ? f.group.trim().slice(0,40) : 'STAGE',
-        visible:f.visible!==false,locked:f.locked===true};
-    });
-    const restoredCues:Cue[]=data.cues.map((c:Cue)=>{
-      if (!c||typeof c.id!=='string'||typeof c.name!=='string'||!['solid','rainbow','chase','gradient','spatial-wave','spatial-blocks'].includes(c.effect)||!Number.isFinite(c.fade)||c.fade<0||c.fade>120||typeof c.color!=='string'||!/^#[a-fA-F0-9]{6}$/.test(c.color))throw new Error('Invalid cue');
-      return {id:c.id.slice(0,80),name:c.name.slice(0,100),effect:c.effect,fade:c.fade,color:c.color};
-    });
-    if (!restored.length)throw new Error('Project needs at least one fixture');
-    if (!restoredCues.length)throw new Error('Project needs at least one cue');
-    fixtures.value=restored;cues.value=restoredCues;selectedId.value=restored[0].id;selectedIds.value=[selectedId.value];undoStack.value=[];redoStack.value=[];editStart=null;resetClock();applyCue(0);
-  }).catch(err=>alert('Import failed: '+String(err))).finally(()=>{(event.target as HTMLInputElement).value='';});
+function loadProject(event:Event){
+  const input=event.target as HTMLInputElement;
+  const file=input.files?.[0];if(!file)return;
+  if(file.size>2_000_000){alert('File too large (max 2MB)');input.value='';return;}
+  file.text().then(raw=>{
+    const p=parseStudioProject(raw);
+    // Atomic replacement only after every fixture and cue passed validation.
+    fixtures.value=p.fixtures as Fixture[];
+    cues.value=p.cues as Cue[];
+    selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
+    activeIndex.value=p.activeIndex;collapsedGroups.value=p.collapsedGroups;
+    speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
+    activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;
+    undoStack.value=[];redoStack.value=[];editStart=null;
+    effect.value=cues.value[activeIndex.value]?.effect || 'solid';
+    color.value=cues.value[activeIndex.value]?.color || '#ffffff';
+    scheduleSave();
+  }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
 }
 function onKey(e: KeyboardEvent) {
   const target=e.target as HTMLElement|null;
@@ -752,16 +763,21 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
     <header class="top">
       <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>0.1 ALPHA</small></span></div>
       <div class="top-center"><span class="project-name">DEMO INSTALLATION</span><span class="separator"></span><span class="muted">SHOW A</span></div>
-      <div class="top-tools"><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">EXPORT</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
+      <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
     </header>
     <div class="workspace">
       <aside class="sidebar left">
         <div class="panel-title"><span>SCENE / PATCH</span><span class="mono muted">01</span></div>
-        <div class="search">⌕ &nbsp; FIXTURES <span class="muted">{{ fixtures.length }}</span></div>
+        <div class="search"><span>⌕ FIXTURES · {{fixtures.length}}</span><div class="group-actions"><button @click="collapseAllGroups" title="Collapse all groups">COLLAPSE</button><button @click="expandAllGroups" title="Expand all groups">EXPAND</button></div></div>
         <div class="tree-heading">⌄ &nbsp; DEMO INSTALLATION <span class="site-dot"></span></div>
         <template v-for="group in fixtureGroups" :key="group">
-          <div class="tree-group">⌄ &nbsp; / {{ group }}</div>
-          <button v-for="f in fixtures.filter(item=>(item.group?.trim()||'STAGE')===group)" :key="f.id" class="tree-item"
+          <div class="group-header">
+            <button class="group-toggle" @click="toggleGroup(group)" :aria-expanded="!collapsedGroups.includes(group)" :title="collapsedGroups.includes(group)?'Expand group':'Collapse group'">{{collapsedGroups.includes(group)?'▸':'▾'}} &nbsp; /</button>
+            <input v-if="editingGroup===group" v-model="groupNameDraft" class="group-rename-input" maxlength="40" aria-label="Rename group" @keydown.enter="commitGroupRename" @keydown.esc="editingGroup=null" @blur="commitGroupRename"/>
+            <button v-else class="group-name" @click="selectGroupByName(group)" :title="'Select all strips in '+group">{{group}}</button>
+            <button class="group-rename" title="Rename group" @click="startGroupRename(group)">✎</button>
+          </div>
+          <button v-if="!collapsedGroups.includes(group)" v-for="f in fixtures.filter(item=>(item.group?.trim()||'STAGE')===group)" :key="f.id" class="tree-item"
             :class="{selected:selectedIds.includes(f.id),primary:selectedId===f.id,hidden:!f.visible}"
             @click="selectFixture(f.id,$event.ctrlKey||$event.metaKey,$event.shiftKey)"
             @contextmenu.prevent="openMenu($event,f.id)">
@@ -775,7 +791,8 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
           <button @click="selectGroup" title="Select active group">GROUP</button>
         </div>
         <button class="add-entity" @click="addFixture">＋ ADD LED STRIP</button>
-        <div class="layout-builder">
+        <button class="section-collapse" @click="togglePanel('arrays')" :aria-expanded="!collapsedPanels.arrays">{{collapsedPanels.arrays?'▸':'▾'}} PARAMETRIC LED ARRAY</button>
+        <div v-if="!collapsedPanels.arrays" class="layout-builder">
           <span>PARAMETRIC LED ARRAY</span>
           <select aria-label="Array layout" v-model="layoutType"><option>ROW X</option><option>ROW Z</option><option>RING XY</option></select>
           <div><label>COUNT <input type="number" v-model.number="layoutCount" min="2" max="32" step="1"/></label>
@@ -784,11 +801,11 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
         </div>
         <button class="export-pixel-map" :disabled="totalPixels>100000" @click="exportPixelCsv" title="Download an offline CSV of every LED world position and virtual DMX slots">↓ PIXEL MAP CSV</button>
         <div class="sidebar-bottom">
-          <div class="panel-title">OUTPUT PATCH <span class="dim-label">SIM</span></div>
-          <div class="metric-row"><span>Pixel count</span><b>{{ totalPixels }}</b></div>
+          <button class="section-collapse" @click="togglePanel('patch')" :aria-expanded="!collapsedPanels.patch">{{collapsedPanels.patch?'▸':'▾'}} OUTPUT PATCH <span class="dim-label">SIM</span></button>
+          <template v-if="!collapsedPanels.patch"><div class="metric-row"><span>Pixel count</span><b>{{ totalPixels }}</b></div>
           <div class="metric-row"><span>Virtual universes</span><b>{{ totalUniverses }}</b></div>
           <div class="metric-row"><span>Protocol</span><b class="accent-text">OFFLINE</b></div>
-          <div class="panel-note">No Art-Net or sACN network packets are sent in this prototype.</div>
+          <div class="panel-note">No Art-Net or sACN network packets are sent in this prototype.</div></template>
         </div>
       </aside>
       <main class="main">
@@ -799,6 +816,7 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
         <div class="editor-tools">
           <button :class="{active:toolMode==='translate'}" title="Move selected LED strip (M)" @click="toolMode='translate'">✥ MOVE <kbd>M</kbd></button>
           <button :class="{active:toolMode==='rotate'}" title="Rotate selected LED strip (R)" @click="toolMode='rotate'">◌ ROTATE <kbd>R</kbd></button>
+          <button :class="{active:toolMode==='scale'}" title="Scale selected LED strip (S)" @click="toolMode='scale'">⬔ SCALE <kbd>S</kbd></button>
           <span class="tool-separator"></span>
           <label>GRID SNAP <select v-model.number="positionSnap" title="Translation snap in meters">
             <option :value="0">FREE</option><option :value="0.01">1 cm</option><option :value="0.05">5 cm</option><option :value="0.1">10 cm</option><option :value="0.25">25 cm</option><option :value="0.5">50 cm</option><option :value="1">1 m</option>
@@ -857,20 +875,30 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
           <button :disabled="selectionCount<2" @click="alignSelected('y')">Y</button>
           <button :disabled="selectionCount<2" @click="alignSelected('z')">Z</button>
         </div>
-        <div class="section-label">GEOMETRY / FIXTURE</div>
+        <button class="section-collapse inspector-section" @click="togglePanel('geometry')" :aria-expanded="!collapsedPanels.geometry">{{collapsedPanels.geometry?'▸':'▾'}} GEOMETRY / FIXTURE</button>
+        <template v-if="!collapsedPanels.geometry">
         <label class="field"><span>Length</span><div class="control"><input v-model.number="current.length" type="range" min="0.2" max="10" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><input v-model.number="current.length" class="num" type="number" min="0.1" max="100" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><em>m</em></div></label>
-        <label class="field"><span>Pixel count</span><div class="control"><input v-model.number="current.pixels" type="range" min="1" max="600" step="1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><input v-model.number="current.pixels" class="num" type="number" min="1" max="2000" step="1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></div></label>
-        <label class="field"><span>Channel format</span><select v-model="current.format" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"><option>RGB</option><option>RGBW</option></select></label>
+        <label class="field"><span>LED / metre</span><div class="control">
+            <select class="density-preset" title="Common strip LED density" :value="DENSITY_PRESETS.includes(current.density)?current.density:'custom'" @change="changeDensity"><option v-for="d in DENSITY_PRESETS" :key="d" :value="d">{{d}} LED/m</option><option value="custom" disabled>CUSTOM</option></select>
+            <input :value="current.density" class="num" aria-label="Custom LEDs per meter" type="number" min="1" max="600" step="1" :disabled="current.locked" @change="changeDensity"/>
+          </div></label>
+        <label class="field"><span>Pixels total</span><b class="value mono">{{current.pixels}} px</b></label>
+        <label class="field"><span>LED chip</span><select :value="current.chip" :disabled="current.locked" @change="chooseChip"><option v-for="profile in CHIP_PROFILES" :key="profile.id" :value="profile.id">{{profile.label}}</option></select></label>
+        <label class="field"><span>Pixel channels</span><b class="value">{{current.format}}</b></label>
         <label class="field"><span>Position Y</span><input v-model.number="current.y" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
         <label class="field"><span>Position X</span><input v-model.number="current.x" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
         <label class="field"><span>Position Z</span><input v-model.number="current.z" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
         <label class="field"><span>Angle Z</span><input v-model.number="current.angle" type="number" step="1" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
-        <div class="panel-note">Drag the coloured gizmo axes directly in 3D. Snap precision is set above; numeric edits remain available for exact values.</div>
-        <div class="section-label">EFFECT / PARAMETERS</div>
+        <div class="panel-note">Drag move / rotate / scale gizmos. Strip pixel count derives from length × density.</div></template>
+        <button class="section-collapse inspector-section" @click="togglePanel('effects')" :aria-expanded="!collapsedPanels.effects">{{collapsedPanels.effects?'▸':'▾'}} CUE DRAFT / COLOUR</button>
+        <template v-if="!collapsedPanels.effects">
         <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Strip Gradient</option><option value="spatial-wave">World-space Wave</option><option value="spatial-blocks">3D Blocks</option></select></label>
-        <label class="field"><span>Color</span><div class="control"><input v-model="color" type="color"/><b class="hex mono">{{ color.toUpperCase() }}</b></div></label>
+        <label class="field"><span>Selected LED filter</span><div class="control"><input type="color" :value="current.tint" @input="paintSelection" @change="commitEdit"/><b class="hex mono">{{current.tint.toUpperCase()}}</b></div></label>
+        <label class="field"><span>Cue draft color</span><div class="control"><input v-model="color" type="color"/><b class="hex mono">{{color.toUpperCase()}}</b></div></label>
         <label class="field"><span>Speed</span><div class="control"><input v-model.number="speed" type="range" min="0" max="3" step="0.01"/><span class="value">{{ speed.toFixed(2) }}</span></div></label>
         <label class="field"><span>Brightness</span><div class="control"><input v-model.number="brightness" type="range" min="0" max="1" step="0.01"/><span class="value">{{ Math.round(brightness*100) }}%</span></div></label>
+        </template><button class="section-collapse inspector-section" @click="togglePanel('pixel')" :aria-expanded="!collapsedPanels.pixel">{{collapsedPanels.pixel?'▸':'▾'}} PIXEL / VIRTUAL PATCH</button>
+        <template v-if="!collapsedPanels.pixel">
         <div class="section-label">PATCH INFORMATION</div>
         <div class="metric-row"><span>Channels required</span><b>{{ patch.channels }}</b></div>
         <div class="metric-row"><span>Virtual universes</span><b>{{ patch.universesUsed }}</b></div>
@@ -879,7 +907,7 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
         <div class="metric-row"><span>World XYZ (m)</span><b>{{focusedPixel.x.toFixed(3)}}, {{focusedPixel.y.toFixed(3)}}, {{focusedPixel.z.toFixed(3)}}</b></div>
         <div class="metric-row"><span>Virtual universe offset</span><b>{{focusedAddress?.universeOffset ?? '—'}}</b></div>
         <div class="metric-row"><span>Virtual slot (1-512)</span><b>{{focusedAddress?.slot ?? '—'}}</b></div>
-        <div class="panel-note">All pixel coordinates are in meters. The CSV and channel addresses are simulated fixture-local data, not a physical controller patch.</div>
+        <div class="panel-note">All pixel coordinates are in meters. The CSV and channel addresses are simulated fixture-local data, not a physical controller patch.</div></template>
       </aside>
     </div>
     <footer class="status"><span class="live-dot"></span><span>PREVIEW ENGINE</span><span class="separator"></span><span><b>{{ fps||'—' }}</b> FPS</span><span class="separator"></span><span>{{ totalPixels }} PIXELS</span><div class="status-spacer"></div><span>OUTPUT DISABLED</span><span class="separator"></span><span>3D: {{ toolMode.toUpperCase() }} · {{ positionSnap ? positionSnap+'m' : 'FREE' }}</span><span class="separator"></span><span>NO SERVER</span><span class="version">FLUXCUE / V0.1</span></footer>
