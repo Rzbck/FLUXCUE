@@ -385,7 +385,7 @@ function restoreLocal(){
     autoNextTime=autoPlay.value?cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5):Infinity;
     effect.value=parsed.editorDraft.effect;color.value=parsed.editorDraft.color;speed.value=parsed.editorDraft.speed;
     cueDraftColors.value={...parsed.editorDraft.looks};
-    cueTargetMode.value=parsed.editorDraft.targetMode;
+    cueTargetMode.value=parsed.editorDraft.targetMode as 'ALL'|'SELECTION';
     cueTargetIdsDraft.value=[...parsed.editorDraft.targetIds];
     saveState.value='RECOVERED';
   }catch{saveState.value='ERROR'; /* Preserve corrupt local bytes for backup/manual recovery. */ }
@@ -861,7 +861,7 @@ function loadProject(event:Event){
     undoStack.value=[];redoStack.value=[];editStart=null;
     effect.value=p.editorDraft.effect;color.value=p.editorDraft.color;speed.value=p.editorDraft.speed;
     cueDraftColors.value={...p.editorDraft.looks};
-    cueTargetMode.value=p.editorDraft.targetMode;
+    cueTargetMode.value=p.editorDraft.targetMode as 'ALL'|'SELECTION';
     cueTargetIdsDraft.value=[...p.editorDraft.targetIds];
     scheduleSave();
   }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
