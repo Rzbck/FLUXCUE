@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commitHistory,stepHistory} from '../src/core/editor-history.mjs';
+import {commitHistory,stepHistory,sameUndoableState} from '../src/core/editor-history.mjs';
 const state=(x,color,groups=[])=>({fixtures:[{id:'s1',x,tint:color}],groups,cues:[{id:'c1',looks:{s1:color}}]});
 test('one full drag is one history item regardless of intermediate pointer frames',()=>{
  const before=state(0,'#ffffff');
@@ -31,4 +31,11 @@ test('new edit invalidates redo and history is capped',()=>{
  const next=commitHistory(u.undo,u.redo,a,state(4,'#00ff00'),2);
  assert.equal(next.redo.length,0);
  assert.equal(commitHistory(next.undo,[],a,a).changed,false);
+});
+
+test('selecting objects and browsing cues does not use Ctrl+Z',()=>{
+ const a={fixtures:[{id:'a',x:0}],selectedId:'a',selectedIds:['a'],activeIndex:0,editIndex:0};
+ const b={...a,selectedId:'b',selectedIds:['b'],activeIndex:1,editIndex:1};
+ assert.equal(sameUndoableState(a,b),true);
+ assert.equal(sameUndoableState(a,{...b,fixtures:[{id:'a',x:1}]}),false);
 });
