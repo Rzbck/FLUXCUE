@@ -18,3 +18,9 @@
 
 - PR #10 merged to `main` (`8c0f954d70fbdbde477e03fbc45e08f6e0facf3c`). Public push CI 38150231964 SUCCESS. PR CI 38150116525 PASS: 12/12 tests, 36 tracked public files and 3 static dist files scanned. No release published yet; manual workflow not executed.
 - Repo rulesets collection returned no rulesets; branch-protection endpoint was forbidden to connector. Do not claim protected `main`.
+
+## 2026-10-11 — Alpha release verification
+- GitHub release `v0.1.0-alpha.0` published; manual workflow run 38153698699 PASS for both build and publish. Exact source CI run 38150450518 SUCCESS.
+- Downloaded workflow artifact 11706959644, inspected manifest/source/CI and archive; SHA256 `d2d0b31717fd587400183ea88892773294b087096b7a07cbff5af1885ad477c2` matched GitHub release asset metadata and SHA256SUMS. Metadata for manifest and checksums likewise matched independent bytes. Modified test archive fails SHA256 comparison. No direct asset download and no browser smoke.
+- Confirmed `Protect main` active GitHub branch ruleset: PR required, no bypass, required `studio` check with strict up-to-date, deletion/non-fast-forward block.
+- No private network, VPS, credentials, host audit, or live lighting output involved.
