@@ -1228,7 +1228,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
 <template>
   <div class="shell">
     <header class="top">
-      <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>0.1 ALPHA</small></span></div>
+      <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>3D PREVIEW</small></span></div>
       <div class="top-center"><input class="project-name-input" aria-label="Current project name" v-model="projectName" maxlength="80"
           @focus="beginEdit" @change="commitEdit" /><span class="separator"></span><span class="muted">SHOW A</span></div>
       <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':saveState==='READY'?'LOCAL READY':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
