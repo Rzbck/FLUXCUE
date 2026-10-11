@@ -424,6 +424,7 @@ onMounted(()=>{
   scene.add(transform.getHelper());
   updateTransformOptions();
   transform.addEventListener('mouseDown',()=>{
+    controls.enabled=false; // The orbit camera must never move with a dragged gizmo.
     transforming=true;suppressSceneClick=true;dragStart=snapshotScene();
   });
   transform.addEventListener('objectChange',()=>{
@@ -433,6 +434,7 @@ onMounted(()=>{
   });
   transform.addEventListener('mouseUp',()=>{
     transforming=false;
+    controls.enabled=true;
     if (dragStart)rememberScene(dragStart);
     dragStart=null;
   });
