@@ -55,3 +55,8 @@ No dates promised until milestones' acceptance tests pass.
 ## Completed delivery gate (2026-10-11)
 - [x] Multi-select / right-click / spatial preview / array generator PR #17 merged, main CI 38163376238 and public Pages 38163376412 both SUCCESS at SHA 8eb486a9.
 - [ ] Complete hands-on Brave smoke before declaring runtime/UX verified; no production network output.
+
+## Studio v0.2 - integrated operator workflow (PR #19, 2026-10-11)
+- [x] Code+unit evidence on PR CI 38165937115 (55 PASS): local save and migration, chip density, scene scale, group editing/collapse, black UI, layered cues, UPDATE/AUTO/STOP, pointerup undo.
+- [ ] Latest PR head green, merged main, Pages deploy green and manual Brave regression.
+- [ ] Backlog: validated project model, spline fixtures, complete physical patch engine, remote/cloud persisted projects, actual backend/headless and output protocols.
