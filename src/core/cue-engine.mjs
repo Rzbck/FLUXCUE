@@ -7,6 +7,9 @@ export function fadeFactor(at, start, duration) {
 export function blendChannel(from, to, progress) {
   if (![from,to,progress].every(Number.isFinite)) throw new RangeError('Invalid cue blend');
   const t=Math.max(0,Math.min(1,progress));
+  // Exact endpoints avoid rounding drift and ensure byte-perfect colours at fade completion.
+  if (t===0) return from;
+  if (t===1) return to;
   return from+(to-from)*t;
 }
 export function advancePreviewClock(time, delta, running) {
