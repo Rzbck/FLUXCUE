@@ -1,0 +1,38 @@
+# Project / scene / fixture / patch / cue schema — draft v0.1
+
+## Rules
+- IDs are stable UUID-like strings; no object identity by array index.
+- Scene geometry defines **physical or design-space** positions (meters), not addresses.
+- Fixture pixel indices are zero-based; DMX slots 1..512; channels per pixel RGB=3, RGBW=4.
+- Art-Net universe numbering semantics must be explicit (Net/SubUni address, never assume UI zero/one base).
+- Model immutable show revision + separate live runtime state.
+- Events/timeline ref IDs, allowing reordering and undo.
+- Changes to patch require validation and cannot take effect in live output without apply/confirm.
+- Avoid schema coupling to MoonLight, ASLS or FPP internals.
+
+## Illustrative JSON (NOT final schema)
+```json
+{
+  "schemaVersion": "0.1.0",
+  "project": { "id": "sample-project", "name": "Demo installation" },
+  "sites": [{ "id": "site-a", "name": "Venue A", "outputMode": "SIMULATOR" }],
+  "fixtures": [{
+    "id": "strip-01", "siteId": "site-a", "name": "Linear strip",
+    "type": "led-strip", "pixels": 60, "channelsPerPixel": 3,
+    "colorOrder": "RGB", "lengthMeters": 1,
+    "points": [[0,0,0],[1,0,0]]
+  }],
+  "patches": [{ "fixtureId": "strip-01", "controllerId": "sim-01",
+    "protocol": "SIMULATOR", "startUniverse": 0, "startSlot": 1 }],
+  "groups": [{ "id": "all", "fixtureIds": ["strip-01"] }],
+  "effects": [{ "id": "rainbow", "kind": "rainbow", "parameters": { "speedHz": 0.25 } }],
+  "cues": [{ "id": "cue-01", "name": "Intro", "effectRefs": ["rainbow"],
+    "fadeInMs": 1000, "holdMs": 5000, "trigger": "GO" }]
+}
+```
+
+## Patch boundary example
+RGB 170 pixels use 510 DMX slots. A 171st pixel MUST move to a different universe under a strict no-split-pixel policy. RGBW 128 pixels consume 512 channels. Unpatched/invalid pixels must never silently wrap into another fixture's channels.
+
+## Next validation
+Implement TypeScript schemas (e.g., Zod/JSON Schema) and reproducible test fixtures including zero, 170, 171, 128 RGBW, and conflicting controllers.
