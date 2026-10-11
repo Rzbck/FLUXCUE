@@ -12,7 +12,10 @@ export function composeRgb(base,layer,intensity,mode='ADD'){
  const alpha=Math.max(0,Math.min(1,intensity));
  return base.map((v,i)=>{
    const a=Math.max(0,Math.min(1,v)),b=Math.max(0,Math.min(1,layer[i]));
-   return mode==='REPLACE'?a*(1-alpha)+b*alpha:1-(1-a)*(1-b*alpha);
+   if(alpha===0 || (mode!=='REPLACE' && b===0))return a;
+   if(mode==='REPLACE' && alpha===1)return b;
+   const mixed=mode==='REPLACE'?a*(1-alpha)+b*alpha:1-(1-a)*(1-b*alpha);
+   return mode==='REPLACE'?mixed:Math.max(a,Math.min(1,mixed));
  });
 }
 export function cueNextAt(start,hold){

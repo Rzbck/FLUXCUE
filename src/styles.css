@@ -93,3 +93,92 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .layout-builder input{width:100%;max-width:64px}
 .layout-builder button{background:#2a4155;border:1px solid #50708b;border-radius:3px;color:#cce2f4;font-weight:750;font-size:9px;padding:7px;cursor:pointer}
 .layout-builder button:hover:not(:disabled){background:#355772}
+
+
+/* FLUXCUE black operator workstation theme v0.2: intentionally neutral, not navy. */
+:root{color-scheme:dark;background:#050505;color:#ddd}
+*{scrollbar-width:thin;scrollbar-color:#333 #0b0b0b}
+*::-webkit-scrollbar{width:7px;height:7px}
+*::-webkit-scrollbar-track{background:#0b0b0b}
+*::-webkit-scrollbar-thumb{background:#303030;border:1px solid #111;border-radius:6px}
+*::-webkit-scrollbar-thumb:hover{background:#505050}
+body{background:#050505}
+.shell,.main{background:#080808;color:#d8d8d8}
+.top,.sidebar,.cue-panel,.cue-content{background:#101010}
+.top,.panel-title,.cue-toolbar,.viewport-head,.viewport,.search,.tree-group,.group-header,.sidebar-bottom,.cue-edit,.cue-actions,.transport,.editor-tools,.status{border-color:#262626!important}
+.top,.viewport-head,.panel-title,.cue-toolbar,.editor-tools,.status,.section-label{background:#141414;color:#bbb}
+.sidebar{background:#111;border-color:#282828}
+.main,.viewport{background:#080808}
+.viewport-overlay span,.viewport-details,.muted,.dim-label,.panel-note,.metric-row{color:#999}
+.tree-heading,.group-header{background:#171717;color:#ccc}
+.tree-item{color:#bababa}
+.tree-item:hover,.cue-row:hover{background:#242424}
+.tree-item.selected{background:#292929;color:#f5f5f5;box-shadow:inset 2px 0 #bababa}
+.tree-item.primary{background:#323232;box-shadow:inset 3px 0 #eee}
+.fixture-mark{background:#888;border-color:#bbb}
+.brand-mark,.go-btn{background:#ddd;color:#101010}
+.brand,.project-name,.clock{color:#f5f5f5}
+.pill.simulate{color:#b5c4b1;border-color:#3b473b;background:#1b211b}
+.live-dot,.site-dot{background:#a6bba3}
+.accent-text{color:#aaa!important}
+.top-button,.transport-btn,.editor-tools button,.viewport-head-actions button,.inspector-actions button,.cue-edit-button,.cue-update,.cue-new,.new-cue,.add-entity,.export-pixel-map,.layout-builder button,.multi-align button,.multi-ops button,.selection-toolbar button{
+ background:#232323!important;color:#dedede!important;border:1px solid #383838!important;border-radius:3px
+}
+.top-button:hover,.transport-btn:hover,.editor-tools button:hover,.viewport-head-actions button:hover,.inspector-actions button:hover,.cue-edit-button:hover,.cue-update:hover,.cue-new:hover{background:#343434!important}
+.editor-tools button.active{background:#484848!important;border-color:#999!important;color:white!important}
+input,select,.field select,.num,.number-wide,.group-input,.cue-edit input,.layout-builder input,.layout-builder select{background:#1b1b1b;color:#e4e4e4;border-color:#3b3b3b}
+.field,.metric-row,.inspector-switches{border-color:#242424}
+.section-label{color:#ddd}
+.viewport-head-actions button:hover{color:white}
+.cue-panel{height:332px;min-height:290px;border-color:#333}
+.cue-panel.compact{height:37px;min-height:37px}
+.cue-content{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden}
+.cue-collapse,.section-collapse{cursor:pointer;background:#181818;border:0;border-bottom:1px solid #292929;color:#bbb;text-align:left;font-size:10px;font-weight:800;letter-spacing:.65px;padding:10px 12px;width:100%}
+.cue-collapse:hover,.section-collapse:hover{background:#222}
+.cue-collapse small{font-weight:500;color:#8d8d8d;letter-spacing:0;padding-left:10px}
+.cue-toolbar{height:37px;min-height:37px;padding:0;justify-content:space-between;background:#141414}
+.cue-toolbar .muted{padding-right:14px;font-size:9px}
+.cue-toolbar .cue-collapse{width:auto;flex:1;border:0}
+.cue-actions{display:flex;align-items:center;gap:8px;padding:7px 12px;background:#151515;border-top:1px solid #292929}
+.cue-actions label{display:flex;align-items:center;gap:6px;font-size:9px;font-weight:750;color:#aaa}
+.cue-actions select,.cue-edit select{background:#222;color:#ddd;border:1px solid #444;border-radius:3px;padding:5px;font-size:10px}
+.cue-actions .cue-hint{margin-left:auto;font-size:9px;color:#8d8d8d}
+.cue-actions button{padding:7px 9px;font-size:10px;font-weight:800;white-space:nowrap}
+.cue-actions .cue-update{border-color:#727272!important}
+.cue-list{min-height:35px}
+.cue-row{display:flex;align-items:center;gap:0;min-height:30px;padding:0}
+.cue-select{border:0;background:transparent;color:inherit;min-width:0;flex:1;height:30px;display:flex;align-items:center;gap:9px;text-align:left;padding:0 11px;font-size:10px}
+.cue-select:hover{background:#292929}
+.cue-row.layerOn .cue-caret{color:#9ecaa0}
+.cue-stop{margin-right:8px;border:1px solid #555;background:#292929;color:#c0a0a0;border-radius:3px;padding:3px 7px;font-size:11px}
+.cue-target{width:70px;color:#999;font-size:9px;text-align:right}
+.cue-edit{gap:6px;padding:6px 9px}
+.cue-edit-fade select{width:80px}
+.cue-edit-fade input{width:48px}
+.cue-edit-name{max-width:230px}
+.cue-edit .cue-edit-button{min-width:25px;padding:5px}
+.cue-fade-bar>span{background:#bbb}
+.transport{min-height:44px;gap:5px;padding:6px 10px}
+.transport .clock{font-size:16px;margin:0 0 0 auto}
+.transport-btn{font-size:9px;padding:7px 9px}
+.transport-btn.autoactive{background:#344334!important;color:#c0dfc0!important}
+.transport-btn.danger{color:#c39c9c!important}
+.go-btn{padding:8px 16px;font-size:10px}
+.section-collapse.inspector-section{margin:4px 0 0;min-height:33px}
+.group-header{display:flex;align-items:center;min-height:31px;gap:2px;padding:0 8px 0 12px}
+.group-toggle,.group-name,.group-rename{border:0;background:transparent;color:#bdbdbd;padding:6px;font-size:10px}
+.group-toggle:hover,.group-name:hover,.group-rename:hover{color:white;background:#282828}
+.group-name{flex:1;text-align:left;font-weight:750;letter-spacing:.4px}
+.group-rename{font-size:12px}
+.group-rename-input{flex:1;width:100%;min-width:0}
+.group-actions{display:flex;gap:4px}
+.group-actions button{background:#222;border:1px solid #393939;border-radius:3px;color:#aaa;font-size:9px;padding:4px 6px}
+.group-actions button:hover{color:white}
+.save-status{font:9px 'DM Mono',monospace;color:#96b396;letter-spacing:.35px;white-space:nowrap}
+.save-status.error{color:#dc9292}
+.density-preset{max-width:106px!important}
+.field .control input.num{width:53px}
+.metric-row{border-color:#292929}
+input[type=range],input[type=checkbox]{accent-color:#bdbdbd}
+:focus-visible{outline:2px solid #bbb!important;outline-offset:1px}
+@media(max-width:1200px){.cue-target,.cue-hint{display:none!important}.cue-actions{gap:4px}.transport-btn{padding:6px}.cue-edit-name{max-width:150px}}
