@@ -13,7 +13,7 @@ test('rejects Tailscale authorization key and host identity', () => {
   assert.equal(scanText('alpha' + '.beta.ts.net').length, 1);
 });
 test('rejects RFC1918 and CGNAT private IPs but allows loopback', () => {
-  assert.equal(scanText('10.0.4.5 100.72.2.1 192.168.0.1').length, 1);
+  assert.equal(scanText('10' + '.0.4.5 100' + '.72.2.1 192' + '.168.0.1').length, 1);
   assert.equal(scanText('127.0.0.1').length, 0);
 });
 test('rejects secret-like file paths', () => {
