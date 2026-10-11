@@ -47,6 +47,8 @@ const saveState=ref<'READY'|'SAVED'|'PENDING'|'ERROR'|'RECOVERED'>('READY');
 const activeLayers=ref<ActiveLayer[]>([]);
 const layerBudget=12;
 const selectedTint=ref('#ffffff');
+const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
+const runningCueIds=computed(()=>new Set(activeLayers.value.map(l=>l.cueId)));
 let hydrated=false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let autoNextTime=Infinity;
@@ -129,7 +131,7 @@ function restoreScene(previous: SceneSnapshot) {
   selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
   selectedIds.value=previous.selectedIds?.filter(id=>fixtures.value.some(f=>f.id===id)) || [selectedId.value];
   if(!selectedIds.value.length)selectedIds.value=[selectedId.value];
-  fadeFrom.clear();
+  activeLayers.value=[];
   syncTransform();
 }
 function undoEdit() {
@@ -504,97 +506,93 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*speed.value*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
-  sampleFx(effect.value,color.value,index,count,time,colorB,f);
-  const start = fadeFrom.get(f.id);
-  const blend = fadeFactor(time,fadeStarted.value,fadeSeconds.value);
-  const slot = index * 3;
-  if (start && slot+2<start.length && blend<1) {
-    // Snapshots are pre-brightness, so changing brightness cannot apply it twice.
-    return output.setRGB(
-      blendChannel(start[slot],colorB.r,blend),
-      blendChannel(start[slot+1],colorB.g,blend),
-      blendChannel(start[slot+2],colorB.b,blend)
-    );
+  const tint=new THREE.Color(f.tint||'#ffffff');
+  // Unpatched base look, used when all cues are stopped.
+  sampleFx(effect.value,'#ffffff',index,count,time,colorB,f);
+  let rgb=activeLayers.value.length ? [0.008,0.008,0.008] : [colorB.r,colorB.g,colorB.b];
+  for(const layer of activeLayers.value){
+    if(!cueAppliesTo(layer,f.id))continue;
+    // The timing of each cue is independent; a later GO never resets prior effects.
+    sampleFx(layer.effect,layer.color,index,count,time-layer.started,colorB,f);
+    rgb=composeRgb(rgb,[colorB.r,colorB.g,colorB.b],layerEnvelope(time,layer.started,layer.fade),layer.mode);
   }
-  return output.copy(colorB);
+  return output.setRGB(rgb[0]*tint.r,rgb[1]*tint.g,rgb[2]*tint.b);
 }
-function captureLook(time: number): Map<string,Float32Array> {
-  const snapshot = new Map<string,Float32Array>();
-  for (const f of fixtures.value) {
-    const count = Math.max(1,Math.floor(f.pixels));
-    const values = new Float32Array(count*3);
-    for (let i=0;i<count;i++) {
-      sampleCurrentPixel(f,i,count,time,tmp);
-      values[i*3]=tmp.r; values[i*3+1]=tmp.g; values[i*3+2]=tmp.b;
-    }
-    snapshot.set(f.id,values);
-  }
-  return snapshot;
-}
-function drawPixels() {
-  for (const f of fixtures.value) {
-    const mesh = strips.get(f.id);
-    if (!mesh) continue;
-    for (let i=0;i<mesh.count;i++) {
+function drawPixels(){
+  for(const f of fixtures.value){
+    const mesh=strips.get(f.id);if(!mesh)continue;
+    for(let i=0;i<mesh.count;i++){
       sampleCurrentPixel(f,i,mesh.count,showTime,tmp);
       mesh.setColorAt(i,tmp.multiplyScalar(brightness.value));
     }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }
-  if (fadeSeconds.value && fadeFactor(showTime,fadeStarted.value,fadeSeconds.value)===1) {
-    fadeFrom.clear(); fadeSeconds.value=0;
+    if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
 }
-function frame(now: number) {
+function frame(now:number){
   raf=requestAnimationFrame(frame);
-  const dt=lastFrame ? Math.max(0,(now-lastFrame)/1000):0;
+  const dt=lastFrame?Math.max(0,(now-lastFrame)/1000):0;
   lastFrame=now;
   showTime=advancePreviewClock(showTime,dt,running.value);
-  if (now-lastUiFrame>75) { showSeconds.value=showTime; lastUiFrame=now; }
-  drawPixels(); controls.update(); renderer.render(scene,camera);
+  if(autoPlay.value && running.value && cues.value.length>0 && showTime>=autoNextTime){
+    applyCue((activeIndex.value+1)%cues.value.length);
+  }
+  if(now-lastUiFrame>75){showSeconds.value=showTime;lastUiFrame=now;}
+  drawPixels();controls.update();renderer.render(scene,camera);
   frameCount++;
-  if (now-frameSampleAt>1000) {fps.value=Math.round(frameCount*1000/(now-frameSampleAt)); frameSampleAt=now;frameCount=0;}
+  if(now-frameSampleAt>1000){fps.value=Math.round(frameCount*1000/(now-frameSampleAt));frameSampleAt=now;frameCount=0;}
 }
-function applyCue(index: number) {
-  if (index<0||index>=cues.value.length) return;
+function applyCue(index:number){
+  if(index<0||index>=cues.value.length)return;
   const c=cues.value[index];
-  const fade = Number.isFinite(c.fade) ? Math.max(0,Math.min(120,c.fade)) : 0;
-  // Capture at the exact logical start time, even if this event interrupts another fade.
-  fadeFrom = fade>0 ? captureLook(showTime) : new Map();
-  effect.value=c.effect;
-  color.value=c.color;
-  fadeStarted.value=showTime;
-  fadeSeconds.value=fade;
-  activeIndex.value=index;
-  showSeconds.value=showTime;
+  // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
+  const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
+    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade};
+  activeLayers.value=[...activeLayers.value.filter(l=>l.cueId!==c.id).slice(-(layerBudget-1)),layer];
+  effect.value=c.effect;color.value=c.color;
+  fadeStarted.value=showTime;fadeSeconds.value=c.fade;
+  activeIndex.value=index;showSeconds.value=showTime;
+  autoNextTime=cueNextAt(showTime,c.hold||5);
   running.value=true;
 }
-function addCue() {
-  cues.value.push({id:'c'+Date.now().toString(36),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',effect:effect.value,fade:1,color:color.value});
+function stopCue(id:string){activeLayers.value=activeLayers.value.filter(l=>l.cueId!==id);}
+function stopAllCues(){activeLayers.value=[];autoNextTime=Infinity;autoPlay.value=false;}
+function captureCueTargets(){return cueTargetMode.value==='ALL'?[]:[...selectedIds.value];}
+function addCue(){
+  if(cues.value.length>=3000)return;
+  const before=snapshotScene();
+  const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
+    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets()};
+  cues.value.push(c);activeIndex.value=cues.value.length-1;
+  rememberScene(before);
 }
-function moveActiveCue(direction: -1 | 1) {
-  const from=activeIndex.value;
-  const to=from+direction;
-  if (to<0||to>=cues.value.length)return;
-  const [selected]=cues.value.splice(from,1);
-  cues.value.splice(to,0,selected);
-  activeIndex.value=to;
+function updateCue(){
+  const c=activeCue.value;if(!c)return;
+  const before=snapshotScene();
+  c.effect=effect.value;c.color=color.value;c.targetIds=captureCueTargets();
+  for(const layer of activeLayers.value)if(layer.cueId===c.id){
+    layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;
+    layer.targetIds=[...c.targetIds];layer.fade=c.fade;
+  }
+  rememberScene(before);
 }
-function removeActiveCue() {
-  if (cues.value.length<=1)return;
-  const index=activeIndex.value;
-  cues.value.splice(index,1);
-  // Keep the rendered scene consistent with the remaining active cue.
-  applyCue(Math.min(index,cues.value.length-1));
+function moveActiveCue(direction:-1|1){
+  const from=activeIndex.value,to=from+direction;
+  if(to<0||to>=cues.value.length)return;
+  const before=snapshotScene();
+  const [cue]=cues.value.splice(from,1);cues.value.splice(to,0,cue);
+  activeIndex.value=to;rememberScene(before);
 }
-function resetClock() {
-  showTime=0;
-  showSeconds.value=0;
-  fadeStarted.value=0;
-  fadeSeconds.value=0;
-  fadeFrom.clear();
-  running.value=false;
-  lastFrame=0;
+function removeActiveCue(){
+  if(cues.value.length<=1)return;
+  const before=snapshotScene(),i=activeIndex.value;
+  const [removed]=cues.value.splice(i,1);
+  stopCue(removed.id);activeIndex.value=Math.min(i,cues.value.length-1);
+  rememberScene(before);
+}
+function resetClock(){
+  showTime=0;showSeconds.value=0;fadeStarted.value=0;fadeSeconds.value=0;
+  activeLayers.value=[];autoNextTime=Infinity;
+  running.value=false;lastFrame=0;
 }
 function addFixture() {
   const before=snapshotScene();
