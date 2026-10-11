@@ -34,3 +34,33 @@ jobs:
           path: package-lock.json
           if-no-files-found: error
           retention-days: 1
+
+  bootstrap-lockfile-write:
+    needs: studio
+    if: ${{ github.event_name == 'pull_request' && github.actor == 'Rzbck' && github.event.pull_request.head.repo.full_name == 'Rzbck/FLUXCUE' && github.event.pull_request.head.ref == 'security/reproducible-alpha-release' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download isolated lockfile (no npm execution, no secrets)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: fluxcue-lockfile-bootstrap
+      - name: Commit lockfile only to trusted branch (one-time bootstrap)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s package-lock.json
+          jq -e '.name == "fluxcue" and .lockfileVersion == 3 and (.packages | length > 20) and .packages[""].name == "fluxcue"' package-lock.json >/dev/null
+          if gh api "repos/Rzbck/FLUXCUE/contents/package-lock.json?ref=$HEAD_BRANCH" --jq .sha >/dev/null 2>&1; then
+            echo "Lockfile already exists: no write."
+            exit 0
+          fi
+          encoded="$(base64 -w0 package-lock.json)"
+          gh api --method PUT "repos/Rzbck/FLUXCUE/contents/package-lock.json" \
+            -f message="build: lock reviewed npm dependency tree" \
+            -f branch="$HEAD_BRANCH" -f content="$encoded" --jq .commit.sha
