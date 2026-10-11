@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { snapPosition, snapAngle, editorTransform, duplicateFixture, sameScene } from './core/scene-editor.mjs';
+import { editorTransform, duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
 import { describePatch } from './core/patch.mjs';
 import { fadeFactor, blendChannel, advancePreviewClock } from './core/cue-engine.mjs';
 
@@ -26,7 +26,7 @@ const cues = ref<Cue[]>([
 ]);
 const selectedId = ref('s1');
 const current = computed(() => fixtures.value.find(f=>f.id===selectedId.value) ?? fixtures.value[0]);
-const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group || 'STAGE'))]);
+const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group?.trim() || 'STAGE'))]);
 const toolMode = ref<ToolMode>('translate');
 const positionSnap = ref(0.1);
 const angleSnap = ref(15);
@@ -50,9 +50,9 @@ const timeLabel = computed(() => {
   const secs = Math.floor(showSeconds.value%60);
   return String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0');
 });
-const patch = computed(() => describePatch(current.value.pixels, current.value.format));
-const totalPixels = computed(() => fixtures.value.reduce((s,f)=>s+f.pixels,0));
-const totalUniverses = computed(() => fixtures.value.reduce((s,f)=>s+describePatch(f.pixels,f.format).universesUsed,0));
+const patch = computed(() => describePatch(sanitizeFixture(current.value).pixels, current.value.format));
+const totalPixels = computed(() => fixtures.value.reduce((s,f)=>s+sanitizeFixture(f).pixels,0));
+const totalUniverses = computed(() => fixtures.value.reduce((s,f)=>s+describePatch(sanitizeFixture(f).pixels,f.format).universesUsed,0));
 const viewport = ref<HTMLElement|null>(null);
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, controls: OrbitControls;
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper;
@@ -111,6 +111,10 @@ function commitEdit() {
   if (editStart) rememberScene(editStart);
   editStart=null;
 }
+function normalizeCurrent() {
+  Object.assign(current.value,sanitizeFixture(current.value));
+  commitEdit();
+}
 function disposeStrips() {
   if (!scene) return;
   for (const mesh of strips.values()) {
@@ -135,9 +139,10 @@ function rebuildScene() {
     if (live.has(id)) continue;
     scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();hitLines.delete(id);
   }
-  for (const f of fixtures.value) {
+  for (const raw of fixtures.value) {
+    const f=sanitizeFixture(raw);
     if (!f.visible) continue;
-    const n=Math.max(1,Math.min(2000,Math.floor(f.pixels)||1));
+    const n=f.pixels;
     let mesh=strips.get(f.id);
     if (!mesh || mesh.count!==n) {
       if (mesh) {scene.remove(mesh);mesh.dispose();(mesh.material as THREE.Material).dispose();}
@@ -171,7 +176,7 @@ function rebuildScene() {
 }
 function syncTransform() {
   if (!transform || !transformProxy || transforming) return;
-  const f=current.value;
+  const f=sanitizeFixture(current.value);
   if (!f || !f.visible || f.locked) {transform.detach();return;}
   transformProxy.position.set(f.x,f.y,f.z);
   transformProxy.rotation.set(0,0,THREE.MathUtils.degToRad(f.angle));
@@ -471,7 +476,7 @@ watch([positionSnap,showGrid],updateGrid);
         <div class="tree-heading">⌄ &nbsp; DEMO INSTALLATION <span class="site-dot"></span></div>
         <template v-for="group in fixtureGroups" :key="group">
           <div class="tree-group">⌄ &nbsp; / {{ group }}</div>
-          <button v-for="f in fixtures.filter(item=>item.group===group)" :key="f.id" class="tree-item"
+          <button v-for="f in fixtures.filter(item=>(item.group?.trim()||'STAGE')===group)" :key="f.id" class="tree-item"
             :class="{selected:selectedId===f.id,hidden:!f.visible}" @click="selectedId=f.id">
             <span class="fixture-mark"></span><span class="fixture-name">{{ f.name }}</span>
             <small>{{ f.locked?'LOCK · ':'' }}{{ f.visible?'':'HIDE · ' }}{{ f.pixels }}px</small>
@@ -539,15 +544,15 @@ watch([positionSnap,showGrid],updateGrid);
           <label><input type="checkbox" :checked="current.visible" @change="toggleSelectedVisibility" /> VISIBLE</label>
           <label><input type="checkbox" :checked="current.locked" @change="toggleSelectedLock" /> LOCK</label>
         </div>
-        <label class="field"><span>Group</span><input class="group-input" v-model="current.group" maxlength="40" @focus="beginEdit" @change="commitEdit"/></label>
+        <label class="field"><span>Group</span><input class="group-input" v-model="current.group" maxlength="40" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
         <div class="section-label">GEOMETRY / FIXTURE</div>
-        <label class="field"><span>Length</span><div class="control"><input v-model.number="current.length" type="range" min="0.2" max="10" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/><input v-model.number="current.length" class="num" type="number" min="0.1" max="100" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/><em>m</em></div></label>
-        <label class="field"><span>Pixel count</span><div class="control"><input v-model.number="current.pixels" type="range" min="1" max="600" step="1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/><input v-model.number="current.pixels" class="num" type="number" min="1" max="2000" step="1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></div></label>
-        <label class="field"><span>Channel format</span><select v-model="current.format" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"><option>RGB</option><option>RGBW</option></select></label>
-        <label class="field"><span>Position Y</span><input v-model.number="current.y" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
-        <label class="field"><span>Position X</span><input v-model.number="current.x" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
-        <label class="field"><span>Position Z</span><input v-model.number="current.z" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
-        <label class="field"><span>Angle Z</span><input v-model.number="current.angle" type="number" step="1" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
+        <label class="field"><span>Length</span><div class="control"><input v-model.number="current.length" type="range" min="0.2" max="10" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><input v-model.number="current.length" class="num" type="number" min="0.1" max="100" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><em>m</em></div></label>
+        <label class="field"><span>Pixel count</span><div class="control"><input v-model.number="current.pixels" type="range" min="1" max="600" step="1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><input v-model.number="current.pixels" class="num" type="number" min="1" max="2000" step="1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></div></label>
+        <label class="field"><span>Channel format</span><select v-model="current.format" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"><option>RGB</option><option>RGBW</option></select></label>
+        <label class="field"><span>Position Y</span><input v-model.number="current.y" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
+        <label class="field"><span>Position X</span><input v-model.number="current.x" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
+        <label class="field"><span>Position Z</span><input v-model.number="current.z" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
+        <label class="field"><span>Angle Z</span><input v-model.number="current.angle" type="number" step="1" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
         <div class="panel-note">Drag the coloured gizmo axes directly in 3D. Snap precision is set above; numeric edits remain available for exact values.</div>
         <div class="section-label">EFFECT / PARAMETERS</div>
         <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Spatial Gradient</option></select></label>

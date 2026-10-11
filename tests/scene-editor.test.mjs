@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {snapPosition,snapAngle,editorTransform,duplicateFixture,sameScene} from '../src/core/scene-editor.mjs';
+import {snapPosition,snapAngle,editorTransform,duplicateFixture,sameScene,sanitizeFixture} from '../src/core/scene-editor.mjs';
 test('fine movement grid supports 1cm, 5cm, 10cm and FREE without floating drift',()=>{
   assert.equal(snapPosition(1.234,0.01),1.23);
   assert.equal(snapPosition(-1.238,0.05),-1.25);
@@ -40,4 +40,17 @@ test('invalid snap and duplicate arguments fail closed',()=>{
   assert.throws(()=>snapPosition(0,-1),RangeError);
   assert.throws(()=>snapAngle(0,Infinity),RangeError);
   assert.throws(()=>duplicateFixture({id:'old'},'old',0.1),RangeError);
+});
+
+test('transient empty or invalid number fields cannot corrupt patch or scene transforms',()=>{
+  const raw={id:'p',pixels:'',length:Infinity,x:NaN,y:1.3,z:2000,angle:Infinity,group:'',visible:true};
+  const clean=sanitizeFixture(raw);
+  assert.equal(clean.pixels,1);
+  assert.equal(clean.length,2);
+  assert.equal(clean.x,0);
+  assert.equal(clean.y,1.3);
+  assert.equal(clean.z,1000);
+  assert.equal(clean.angle,0);
+  assert.equal(clean.group,'STAGE');
+  assert.equal(raw.group,'');
 });

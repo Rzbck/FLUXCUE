@@ -29,3 +29,20 @@ export function duplicateFixture(source,id,step) {
 export function sameScene(a,b) {
   return JSON.stringify(a)===JSON.stringify(b);
 }
+
+/** Clamp transient number-field edits before they can poison rendering or patch calculations. */
+export function sanitizeFixture(f) {
+  const finite=(v,fallback,min,max)=>{
+    const n=Number(v);
+    return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
+  };
+  return {...f,
+    pixels:Math.round(finite(f.pixels,1,1,2000)),
+    length:finite(f.length,2,0.1,100),
+    x:finite(f.x,0,-1000,1000),
+    y:finite(f.y,0,-1000,1000),
+    z:finite(f.z,0,-1000,1000),
+    angle:snapAngle(finite(f.angle,0,-360000,360000),0),
+    group:typeof f.group==='string'&&f.group.trim()?f.group.trim().slice(0,40):'STAGE'
+  };
+}
