@@ -1,41 +1,47 @@
 # FLUXCUE — LIVE HANDOFF
-Updated: 2026-10-11. Canonical repo: https://github.com/Rzbck/FLUXCUE
+Updated: 2026-10-11. Repo: https://github.com/Rzbck/FLUXCUE
 
-> **Important:** This document is a persistent *human/agent handoff*, not automatic memory or a live sync mechanism. Re-read current GitHub `main` and this file on every new conversation. A later session must verify the HEAD SHA rather than assume it.
+> Read the current branch and HEAD SHA every session. This document is a maintained snapshot; it does **not** update itself. GitHub is the source of truth, not conversational memory.
 
-## Product intent
-Independent open-source browser-based 3D design, patching and live show programming for addressable LED strips, volumes and conventional fixtures. Effects, cues, multi-track timeline, groups, layers, realtime 3D preview, Art-Net/sACN outputs, and optional local site player; cloud orchestrator planned on Oracle Linux ARM64, site router MikroTik via secure VPN. Build a cohesive product, not a bundle of unrelated UIs.
+## Vision
+Professional compact dark browser Studio to create and preview LED strips, spatial pixels, fixture groups, layers, procedural effects and timed cues. Server side headless show engine on Oracle ARM64; Art-Net/sACN through a private routed WireGuard/MikroTik installation; optional local autonomous playback.
 
-## Critical UX preferences
-Very compact professional dark interface; useful density; comprehensive parameter access without giant menus; 3D central; patch/groups/effects/cues all visible; multi-selection; precise numeric editing, drag/drop, snapshots, live safety controls, keyboard shortcuts. ASLS is a reference for the overall UX, not a requirement to fork.
+## What is actually in git
+- `README.md`, `AGENTS.md`, `docs/AUDIT_OPEN_SOURCE.md`, `docs/UI_UX.md`, `docs/ARCHITECTURE.md`, `docs/SHOW_MODEL.md`, `docs/LICENSE_POLICY.md`, `docs/DECISIONS.md`, `docs/TEST_PLAN.md`, `docs/ROADMAP.md`, `docs/OPERATIONS.md`.
+- Vue 3 + Vite + Three.js proof-of-concept: `src/App.vue`, `src/styles.css`, `src/main.ts`, `src/core/patch.mjs`.
+- Unit tests for fixture patch: `tests/patch.test.mjs`.
+- CI workflow in `.github/workflows/ci.yml`.
+- Prototype run instructions: `docs/PROTOTYPE.md`.
+- Issues #1–#8 opened with clear acceptance objectives.
 
-## Verified repository state
-- Existing public repository `Rzbck/FLUXCUE` was found empty on 2026-10-11.
-- Documentation initialization began; refer to current `main` for the latest commit and concrete files.
-- Source software research captured in `docs/AUDIT_OPEN_SOURCE.md`.
-- **No tested Oracle deployment, real network device, authenticated site router or Art-Net output** at initial handoff.
-- Last known setup commit before audit-document package: `1763755f46eafe0bf3d5d0b2561f63d9a8fda6c9`; this is a historical bootstrap reference, not an assertion of current HEAD.
-- Current phase: architecture, interaction contracts, evidence-based upstream survey, then runnable browser prototype and engine spike.
+## Verified historical commit trail
+- `1763755`: bootstrap README.
+- `aabda21`: docs/agents/audit.
+- `99d835f`: prototype Studio source.
+- Current HEAD **must be fetched** from GitHub; do not rely on the SHA above for newest content.
 
-## Core design decisions
-- New independent repo. Avoid unreviewed source copy.
-- Browser = editing and 3D preview (Three.js); browser NOT mission-critical show executor.
-- Versioned show/fixture/patch data independent of editor and outputs.
-- Headless engine must operate on ARM64 without GPU. Native MoonLight evaluated as optional separate engine/adapter, not yet selected as a dependency.
-- Cloud LIVE over secure routed unicast VPN; local autonomous playback after sync is preferred for production reliability.
-- No Internet-facing unauthenticated UDP, WebSocket or routing control.
-- First output = virtual simulator; then measured hardware tests and controlled WAN tunnel.
+## Status and limits
+- Visual Studio **CODED-UNVERIFIED** until CI+browser smoke confirms.
+- Pure patch tests written but CI result must be inspected.
+- No real live outputs; preview is SIMULATOR.
+- No server, user auth, database, Oracle deployment or MikroTik connection.
+- The first comparative audit is documented, but per-component code audit/benchmark/licensing review remains **OPEN** (issues #1, #2, #6).
 
-## Work order / next objective
-1. Finish static source audit and rank UI patterns, effects, licenses and integration effort.
-2. Deliver/verify **MVP browser Studio**: simple patch, LED strip in 3D, configurable pixels, sample cues and mock playback. Simulated output must be labelled.
-3. Validate full data model and deterministic sample fixture serialization.
-4. Implement headless server with tests; first Art-Net loopback test on localhost; only then real MikroTik/site integration.
-5. Profile 30/60 FPS and latency on actual Oracle ARM before scale commitments.
+## Next single goal
+**Issue #3**: check GitHub CI; make `npm run build` and `npm test` pass, inspect actual UI in Brave/Chrome 1920x1080 + 1366x768, fix regressions, refresh state/handoff. After that do #1 and #2 upstream code-level evaluations.
 
-## Updating this file
-Every implementation session append a short entry to `docs/WORK_LOG.md` and refresh this summary:
-- branch / SHA / UTC date
-- delivered and genuinely tested (commands + results)
-- outstanding issue, risk, next goal
-Keep older major decisions in `docs/DECISIONS.md`. Avoid handoff claiming UI/API/infra exists without checking files and tests.
+## User preferences / product intent
+- UX takes ASLS' compact dark show layout and 3D preview as its primary reference; deeper pixel editor/UX inspired by GeoPix, MoonLight effect graph, QLC+/xLights cues, LedFx audio ideas and FPP failover.
+- Must remain own software, not blindly fork or copy upstream GPLv3/EUPL materials.
+- Editor controls dense but clean; no fake metrics. Working modes visibly distinguish SIMULATOR vs LIVE. Full patch/fixtures/cues/effects groups and editable world-space geometry.
+- Eventually OSC/MIDI/Bitfocus Companion, TouchDesigner and Unreal LightLab interoperability; these are later extensions, not MVP blockers.
+
+## AI handoff protocol (mandatory)
+1. Read `AGENTS.md` then this file, PROJECT_STATE, DECISIONS, audit and issues.
+2. Check latest GitHub `main`, CI and open issues; report factual current state and SHA.
+3. Work focused; test; do not invent successes.
+4. In the same change update `docs/WORK_LOG.md`, `docs/PROJECT_STATE.md`, `docs/HANDOFF.md` with exact verified tests and next task.
+5. No secrets, tokens, public router admin ports, private network details in this public repo.
+
+Suggested new-conversation first message:
+"Reprends https://github.com/Rzbck/FLUXCUE : lis AGENTS.md, docs/HANDOFF.md, docs/PROJECT_STATE.md, docs/DECISIONS.md et l'audit, récupère main/CI/issues, puis reprends issue #3 (ou la première non terminée). Mets à jour le handoff à la fin."
