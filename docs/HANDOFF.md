@@ -64,3 +64,13 @@ Suggested new-conversation first message:
 - Manual release target: GitHub Actions > "FLUXCUE Studio Release (manual)" on `main`, input `v0.1.0-alpha.0`, only after the exact current `main` commit passes public CI. This job requires explicit owner action; ChatGPT GitHub connector has no workflow_dispatch action exposed.
 - No private host IDs, tokens or client details written into public source. Dedicated scanner is limited and not a historical credential audit.
 - Next single goal: confirm branch protections and perform manual alpha-release dispatch; verify real release artifact digest and source CI, then update handoffs (public/private).
+
+## 2026-10-11 — First alpha release published and independently checked
+- PUBLIC alpha release https://github.com/Rzbck/FLUXCUE/releases/tag/v0.1.0-alpha.0 **PUBLISHED** by GitHub Actions run https://github.com/Rzbck/FLUXCUE/actions/runs/38153698699 (**build** and **publish** jobs SUCCESS).
+- Release SOURCE SHA: `e97260dcf50563df4d8e958e3bd485c8b89508c2`. Matching PUBLIC push CI https://github.com/Rzbck/FLUXCUE/actions/runs/38150450518 **SUCCESS** with 12/12 tests from prior proof.
+- Published release assets: `fluxcue-studio-v0.1.0-alpha.0-e97260dcf50563df4d8e958e3bd485c8b89508c2.tar.gz` (157825 bytes), `manifest.json`, `SHA256SUMS`.
+- SHA256 archive: `d2d0b31717fd587400183ea88892773294b087096b7a07cbff5af1885ad477c2`. Re-downloaded **GitHub Actions build artifact**, independently unpacked in isolated analysis environment. Archive hash matches manifest, SHA256SUMS AND GitHub release asset digest metadata. Manifest and SHA256SUMS bytes likewise match GitHub published asset digest metadata.
+- Archive contains `index.html`, one generated JS and one CSS asset only, no symlinks. Deliberately altered archive bytes fail digest comparison. **Direct download of release asset bytes was not independently tested**; metadata vs separately obtained build artifact verified.
+- GitHub branch ruleset `Protect main` ID 24883490 **ACTIVE** and verified via GitHub connector API: default `main`, no bypass, PR required with 0 reviewers, deletion and non-fast-forward blocked, `studio` status required, `strict_required_status_checks_policy=true` (branch up-to-date checks).
+- Mode is **SIMULATOR** only. Browser visual smoke NOT RUN; Oracle, SSH, Tailscale, real lighting outputs and server deployment NOT RUN. Public release is GitHub prerelease, not production installation.
+- Next single goal: #3 real Brave/Chrome browser smoke of the released static Studio, then fix findings through PR. No VPS access required.
