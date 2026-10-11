@@ -16,7 +16,7 @@ export function parseStudioProject(json){
    !['RGB','RGBW'].includes(f.format))throw new RangeError('Invalid fixture');
   ids.add(f.id);
   return {id:f.id,name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,
-   format:f.format,group:typeof f.group==='string'&&f.group.trim()?f.group.trim().slice(0,40):'STAGE',
+   format:f.format,group:typeof f.group==='string'?f.group.trim().slice(0,40):'',
    visible:f.visible!==false,locked:f.locked===true,
    chip:normalizedChip(f),density:inferredDensity(f),tint:hex(f.tint)?f.tint:'#ffffff'};
  });
@@ -41,9 +41,16 @@ export function parseStudioProject(json){
    fade:layer.fade,started:layer.started,mode:layer.mode,speed:finite(layer.speed,0,3)?layer.speed:.35,
    targetIds:Array.isArray(layer.targetIds)?layer.targetIds.filter(id=>ids.has(id)).slice(0,500):[]
  })):[];
+ // New files have explicit, user-owned groups. Old 0.1 projects without this
+ // list are migrated once, retaining historical STAGE/FLOOR group assignments.
+ const groups=Array.isArray(d.groups)
+  ?d.groups.filter(g=>typeof g==='string'&&g.trim()&&g.trim().length<=40).slice(0,100)
+  :fixtures.map(f=>f.group).filter(Boolean);
+ const distinctGroups=[...new Set(groups)];
+ for(const f of fixtures)if(f.group && !distinctGroups.includes(f.group)) f.group='';
  const selectedId=typeof d.selectedId==='string'&&ids.has(d.selectedId)?d.selectedId:fixtures[0].id;
  const selectedIds=Array.isArray(d.selectedIds)?d.selectedIds.filter(id=>ids.has(id)).slice(0,500):[selectedId];
- return {fixtures,cues,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
+ return {fixtures,cues,groups:distinctGroups,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
   activeIndex:Number.isInteger(d.activeIndex)?Math.max(0,Math.min(cues.length-1,d.activeIndex)):0,
   collapsedGroups:Array.isArray(d.collapsedGroups)?d.collapsedGroups.filter(s=>typeof s==='string').slice(0,100):[],
   collapsedPanels:Object.fromEntries(['scene','arrays','patch','cues','geometry','effects','pixel'].map(k=>[k,d.collapsedPanels?.[k]===true])),

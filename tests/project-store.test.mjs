@@ -17,3 +17,17 @@ test('valid restored show includes bounded running cue layers and blackout',()=>
  assert.equal(p.showTime,10);assert.equal(p.running,false);assert.equal(p.blackout,true);
  assert.equal(p.collapsedPanels.cues,true);assert.equal(p.activeLayers[0].speed,.7);
 });
+
+test('legacy group migration retains old explicitly named STAGE fixtures',()=>{
+ const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture],cues:[cue]}));
+ assert.deepEqual(p.groups,['STAGE']);assert.equal(p.fixtures[0].group,'STAGE');
+});
+test('empty manually managed groups are preserved, and ungrouped fixtures remain ungrouped',()=>{
+ const data={schemaVersion:'0.1.0',fixtures:[{...fixture,group:''}],cues:[cue],groups:['MY GROUP','EMPTY GROUP']};
+ const p=parseStudioProject(JSON.stringify(data));
+ assert.deepEqual(p.groups,['MY GROUP','EMPTY GROUP']);assert.equal(p.fixtures[0].group,'');
+});
+test('unknown fixture group in explicit model is ungrouped, no auto-created groups',()=>{
+ const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture],cues:[cue],groups:[]}));
+ assert.deepEqual(p.groups,[]);assert.equal(p.fixtures[0].group,'');
+});
