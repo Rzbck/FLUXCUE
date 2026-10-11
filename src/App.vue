@@ -3,13 +3,14 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { editorTransform, duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
+import { duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
+import {chooseSelection, editableFixtures, selectionPivot, transformGroup, scenePixelPosition, spatialWave, spatialBlocks} from './core/spatial-selection.mjs';
 import { describePatch } from './core/patch.mjs';
 import { fadeFactor, blendChannel, advancePreviewClock } from './core/cue-engine.mjs';
 
-type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient';
+type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean };
-type SceneSnapshot = { fixtures: Fixture[]; selectedId: string };
+type SceneSnapshot = { fixtures: Fixture[]; selectedId: string; selectedIds: string[] };
 type ToolMode = 'translate' | 'rotate';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string };
 const fixtures = ref<Fixture[]>([
@@ -25,6 +26,12 @@ const cues = ref<Cue[]>([
   { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff' }
 ]);
 const selectedId = ref('s1');
+const selectedIds = ref<string[]>(['s1']);
+const contextMenu = ref({visible:false,x:0,y:0});
+const bulkGroup = ref('STAGE');
+const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
+const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
+const selectionCount = computed(() => selectedIds.value.length);
 const current = computed(() => fixtures.value.find(f=>f.id===selectedId.value) ?? fixtures.value[0]);
 const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group?.trim() || 'STAGE'))]);
 const toolMode = ref<ToolMode>('translate');
@@ -58,6 +65,8 @@ let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRe
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
+let dragPivot: {x:number,y:number,z:number} | null = null;
+let dragBaseline: Fixture[] = [];
 const raycaster = new THREE.Raycaster();
 const cursor = new THREE.Vector2();
 const hitLines = new Map<string, THREE.Line>();
@@ -79,7 +88,7 @@ function resize() {
   renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
-  return { fixtures:fixtures.value.map(f=>({...f})),selectedId:selectedId.value };
+  return { fixtures:fixtures.value.map(f=>({...f})),selectedId:selectedId.value,selectedIds:[...selectedIds.value] };
 }
 function rememberScene(previous: SceneSnapshot) {
   if (sameScene(previous,snapshotScene())) return;
@@ -89,6 +98,8 @@ function rememberScene(previous: SceneSnapshot) {
 function restoreScene(previous: SceneSnapshot) {
   fixtures.value=previous.fixtures.map(f=>({...f}));
   selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
+  selectedIds.value=previous.selectedIds?.filter(id=>fixtures.value.some(f=>f.id===id)) || [selectedId.value];
+  if(!selectedIds.value.length)selectedIds.value=[selectedId.value];
   fadeFrom.clear();
   syncTransform();
 }
@@ -156,7 +167,7 @@ function rebuildScene() {
     for (let i=0;i<n;i++) {
       const t=n<=1?0:(i/(n-1)-0.5)*f.length;
       dummy.position.set(f.x+dx*t,f.y+dy*t,f.z);
-      dummy.scale.setScalar(f.id===selectedId.value?1.4:1);
+      dummy.scale.setScalar(selectedIds.value.includes(f.id)?1.55:1);
       dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
     }
     mesh.instanceMatrix.needsUpdate=true;
@@ -176,10 +187,12 @@ function rebuildScene() {
 }
 function syncTransform() {
   if (!transform || !transformProxy || transforming) return;
-  const f=sanitizeFixture(current.value);
-  if (!f || !f.visible || f.locked) {transform.detach();return;}
-  transformProxy.position.set(f.x,f.y,f.z);
-  transformProxy.rotation.set(0,0,THREE.MathUtils.degToRad(f.angle));
+  const group=editableFixtures(fixtures.value,selectedIds.value);
+  const pivot=selectionPivot(group);
+  if (!pivot) {transform.detach();return;}
+  transformProxy.position.set(pivot.x,pivot.y,pivot.z);
+  // Shared selection pivot rotates the whole group, not only the active fixture.
+  transformProxy.rotation.set(0,0,0);
   updateGridAnchor();
   transform.attach(transformProxy);
   transform.setMode(toolMode.value);
@@ -229,7 +242,8 @@ function onSceneClick(event: MouseEvent) {
   raycaster.params.Line.threshold=0.18;
   const hit=raycaster.intersectObjects([...hitLines.values()],false)[0];
   const id=hit?.object.userData.fixtureId as string|undefined;
-  if (id && fixtures.value.some(f=>f.id===id && f.visible)) selectedId.value=id;
+  if (id && fixtures.value.some(f=>f.id===id && f.visible)) selectFixture(id,event.ctrlKey||event.metaKey,event.shiftKey);
+  else if (!event.ctrlKey&&!event.metaKey&&!event.shiftKey && id===undefined) contextMenu.value.visible=false;
 }
 function setView(view: 'ISO'|'FRONT'|'TOP'|'RIGHT') {
   if (!controls || !camera)return;
@@ -244,27 +258,101 @@ function setView(view: 'ISO'|'FRONT'|'TOP'|'RIGHT') {
   if (view==='TOP'){camera.up.set(0,0,-1);camera.position.copy(target).add(new THREE.Vector3(0,distance,0.001));}
   camera.lookAt(target);controls.update();
 }
+function orderedFixtureIds(){
+  return fixtureGroups.value.flatMap(g => fixtures.value.filter(f => (f.group?.trim() || 'STAGE')===g).map(f=>f.id));
+}
+function selectFixture(id:string,toggle=false,range=false) {
+  contextMenu.value.visible=false;
+  const next=chooseSelection(selectedIds.value,id,orderedFixtureIds(),{toggle,range,anchor:selectedId.value});
+  selectedIds.value=next;
+  selectedId.value=next.includes(id)?id:(next.at(-1) || id);
+}
+function selectAll() {
+  selectedIds.value=fixtures.value.map(f=>f.id);
+  selectedId.value=selectedIds.value[0];
+  contextMenu.value.visible=false;
+}
+function selectGroup() {
+  const group=current.value.group;
+  selectedIds.value=fixtures.value.filter(f=>f.group===group).map(f=>f.id);
+  selectedId.value=selectedIds.value[0] || current.value.id;
+  contextMenu.value.visible=false;
+}
+function selectInverse() {
+  const inverse=fixtures.value.filter(f=>!selectedIds.value.includes(f.id)).map(f=>f.id);
+  if(inverse.length){selectedIds.value=inverse;selectedId.value=inverse[0];}
+  contextMenu.value.visible=false;
+}
 function addDuplicate() {
-  const before=snapshotScene();
-  const f=current.value;
-  const id='s'+crypto.randomUUID();
-  const copy=duplicateFixture(f,id,positionSnap.value);
-  fixtures.value.push(copy);
-  selectedId.value=id;
-  rememberScene(before);
+  const before=snapshotScene(),copies:Fixture[]=[];
+  for(const f of selectedFixtures.value){
+    if(fixtures.value.length+copies.length>=500)break;
+    copies.push(duplicateFixture(f,'s'+crypto.randomUUID(),positionSnap.value));
+  }
+  if(!copies.length)return;
+  fixtures.value.push(...copies);
+  selectedIds.value=copies.map(f=>f.id);selectedId.value=copies[0].id;
+  rememberScene(before);contextMenu.value.visible=false;
 }
 function deleteFixture() {
-  if (fixtures.value.length<=1 || current.value.locked)return;
+  if(fixtures.value.length<=1)return;
+  const deletable=new Set(selectedFixtures.value.filter(f=>!f.locked).map(f=>f.id));
+  if(deletable.size===0)return;
   const before=snapshotScene();
-  fixtures.value=fixtures.value.filter(f=>f.id!==selectedId.value);
-  selectedId.value=fixtures.value[0].id;
-  rememberScene(before);
+  const keep=fixtures.value.filter(f=>!deletable.has(f.id));
+  if(!keep.length)keep.push(fixtures.value[0]);
+  if(keep.length===fixtures.value.length)return;
+  fixtures.value=keep;
+  selectedId.value=keep[0].id;selectedIds.value=[selectedId.value];
+  rememberScene(before);contextMenu.value.visible=false;
+}
+function setSelectedVisibility(value:boolean) {
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)f.visible=value;
+  rememberScene(before);contextMenu.value.visible=false;
 }
 function toggleSelectedVisibility() {
-  const before=snapshotScene();current.value.visible=!current.value.visible;rememberScene(before);
+  setSelectedVisibility(!current.value.visible);
 }
-function toggleSelectedLock() {
-  const before=snapshotScene();current.value.locked=!current.value.locked;rememberScene(before);
+function setSelectedLock(value:boolean) {
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)f.locked=value;
+  rememberScene(before);contextMenu.value.visible=false;
+}
+function toggleSelectedLock() {setSelectedLock(!current.value.locked);}
+function applyBulkGroup() {
+  const group=bulkGroup.value.trim().slice(0,40);
+  if(!group)return;
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)if(!f.locked)f.group=group;
+  rememberScene(before);contextMenu.value.visible=false;
+}
+function alignSelected(axis:'x'|'y'|'z') {
+  if(selectedFixtures.value.length<2)return;
+  const before=snapshotScene(),value=sanitizeFixture(current.value)[axis];
+  for(const f of selectedFixtures.value)if(!f.locked)f[axis]=value;
+  rememberScene(before);contextMenu.value.visible=false;
+}
+function openMenu(event:MouseEvent,id?:string) {
+  event.preventDefault();event.stopPropagation();
+  if(id && !selectedIds.value.includes(id))selectFixture(id);
+  contextMenu.value={visible:true,x:Math.min(event.clientX,window.innerWidth-225),
+    y:Math.min(event.clientY,window.innerHeight-380)};
+}
+function pickFixture(event:MouseEvent):string|undefined {
+  if(!renderer || !camera)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  if(!rect.width || !rect.height)return;
+  cursor.set((event.clientX-rect.left)/rect.width*2-1,-((event.clientY-rect.top)/rect.height*2-1));
+  raycaster.setFromCamera(cursor,camera);raycaster.params.Line.threshold=0.18;
+  return raycaster.intersectObjects([...hitLines.values()],false)[0]?.object.userData.fixtureId as string|undefined;
+}
+function onSceneContextMenu(event:MouseEvent){
+  const id=pickFixture(event);openMenu(event,id);
+}
+function onOutsideMenu(event:PointerEvent){
+  const element=event.target as Element;
+  if(contextMenu.value.visible && !element?.closest?.('.scene-context-menu'))contextMenu.value.visible=false;
 }
 function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color) {
   const p = count <= 1 ? 0 : index/(count-1);
@@ -374,7 +462,7 @@ function addFixture() {
   const i=fixtures.value.length+1;
   const id='s'+crypto.randomUUID();
   fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:60,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:current.value.group,visible:true,locked:false});
-  selectedId.value=id;
+  selectedId.value=id;selectedIds.value=[id];
   rememberScene(before);
 }
 function saveProject() {
@@ -390,19 +478,23 @@ function loadProject(event: Event) {
   file.text().then(text=>{
     const data=JSON.parse(text);
     if (data.schemaVersion!=='0.1.0'||!Array.isArray(data.fixtures)||!Array.isArray(data.cues)||data.fixtures.length>500||data.cues.length>3000)throw new Error('Invalid project');
+    const seenIds=new Set<string>();
     const restored:Fixture[]=data.fixtures.map((f:Fixture)=>{
       if (!f||typeof f.id!=='string'||typeof f.name!=='string'||!Number.isInteger(f.pixels)||f.pixels<1||f.pixels>2000||!Number.isFinite(f.length)||f.length<=0||f.length>100||!['RGB','RGBW'].includes(f.format)||![f.x,f.y,f.z,f.angle].every(x=>Number.isFinite(x)))throw new Error('Invalid fixture');
-      return {id:f.id.slice(0,80),name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,format:f.format,
+      const id=f.id.slice(0,80);
+      if(!id || seenIds.has(id))throw new Error('Duplicate fixture ID');
+      seenIds.add(id);
+      return {id,name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,format:f.format,
         group:typeof f.group==='string'&&f.group.trim() ? f.group.trim().slice(0,40) : 'STAGE',
         visible:f.visible!==false,locked:f.locked===true};
     });
     const restoredCues:Cue[]=data.cues.map((c:Cue)=>{
-      if (!c||typeof c.id!=='string'||typeof c.name!=='string'||!['solid','rainbow','chase','gradient'].includes(c.effect)||!Number.isFinite(c.fade)||c.fade<0||c.fade>120||typeof c.color!=='string'||!/^#[a-fA-F0-9]{6}$/.test(c.color))throw new Error('Invalid cue');
+      if (!c||typeof c.id!=='string'||typeof c.name!=='string'||!['solid','rainbow','chase','gradient','spatial-wave','spatial-blocks'].includes(c.effect)||!Number.isFinite(c.fade)||c.fade<0||c.fade>120||typeof c.color!=='string'||!/^#[a-fA-F0-9]{6}$/.test(c.color))throw new Error('Invalid cue');
       return {id:c.id.slice(0,80),name:c.name.slice(0,100),effect:c.effect,fade:c.fade,color:c.color};
     });
     if (!restored.length)throw new Error('Project needs at least one fixture');
     if (!restoredCues.length)throw new Error('Project needs at least one cue');
-    fixtures.value=restored;cues.value=restoredCues;selectedId.value=restored[0].id;undoStack.value=[];redoStack.value=[];editStart=null;resetClock();applyCue(0);
+    fixtures.value=restored;cues.value=restoredCues;selectedId.value=restored[0].id;selectedIds.value=[selectedId.value];undoStack.value=[];redoStack.value=[];editStart=null;resetClock();applyCue(0);
   }).catch(err=>alert('Import failed: '+String(err))).finally(()=>{(event.target as HTMLInputElement).value='';});
 }
 function onKey(e: KeyboardEvent) {
@@ -412,8 +504,11 @@ function onKey(e: KeyboardEvent) {
     if (e.code==='KeyZ'){e.preventDefault();e.shiftKey?redoEdit():undoEdit();}
     else if (e.code==='KeyY'){e.preventDefault();redoEdit();}
     else if (e.code==='KeyS'){e.preventDefault();saveProject();}
+    else if (e.code==='KeyA'){e.preventDefault();selectAll();}
+    else if (e.code==='KeyD'){e.preventDefault();addDuplicate();}
     return;
   }
+  if (e.code==='Escape'){contextMenu.value.visible=false;return;}
   if (e.altKey||transforming)return;
   if (e.code==='Space'){e.preventDefault();running.value=!running.value;}
   if (e.code==='KeyG' && !e.shiftKey){e.preventDefault();applyCue((activeIndex.value+1)%cues.value.length);}
@@ -424,7 +519,7 @@ function onKey(e: KeyboardEvent) {
   if (e.code==='Digit1'){setView('FRONT');}
   if (e.code==='Digit2'){setView('TOP');}
   if (e.code==='Digit3'){setView('RIGHT');}
-  if (e.code==='Delete' && !current.value.locked){e.preventDefault();deleteFixture();}
+  if (e.code==='Delete'){e.preventDefault();deleteFixture();}
 }
 onMounted(()=>{
   scene=new THREE.Scene();scene.background=new THREE.Color('#10151d');
@@ -445,22 +540,36 @@ onMounted(()=>{
   scene.add(transform.getHelper());
   updateTransformOptions();
   transform.addEventListener('mouseDown',()=>{
-    controls.enabled=false; // The orbit camera must never move with a dragged gizmo.
-    transforming=true;suppressSceneClick=true;dragStart=snapshotScene();
+    controls.enabled=false;transforming=true;suppressSceneClick=true;
+    dragStart=snapshotScene();
+    dragBaseline=dragStart.fixtures.map(f=>({...f}));
+    dragPivot=selectionPivot(editableFixtures(dragBaseline,selectedIds.value));
   });
   transform.addEventListener('objectChange',()=>{
-    if (!current.value || current.value.locked || !current.value.visible)return;
-    const next=editorTransform(current.value,transformProxy.position,transformProxy.rotation.z);
-    Object.assign(current.value,next);
-    updateGridAnchor();
+    if(!dragPivot || !dragBaseline.length)return;
+    const delta={x:transformProxy.position.x-dragPivot.x,
+      y:transformProxy.position.y-dragPivot.y,z:transformProxy.position.z-dragPivot.z};
+    const degrees=transformProxy.rotation.z*180/Math.PI;
+    try {
+      const modified=transformGroup(dragBaseline,selectedIds.value,dragPivot,
+        toolMode.value==='translate'?delta:{x:0,y:0,z:0},
+        toolMode.value==='rotate'?degrees:0);
+      const byId=new Map(modified.map(f=>[f.id,f]));
+      for(const f of fixtures.value){
+        const next=byId.get(f.id);
+        if(next){f.x=next.x;f.y=next.y;f.z=next.z;f.angle=next.angle;}
+      }
+      updateGridAnchor();
+    } catch { /* Ignore transient out-of-bounds pointer input; no scene state is written. */ }
   });
   transform.addEventListener('mouseUp',()=>{
-    transforming=false;
-    controls.enabled=true;
-    if (dragStart)rememberScene(dragStart);
-    dragStart=null;
+    transforming=false;controls.enabled=true;
+    if(dragStart)rememberScene(dragStart);
+    dragStart=null;dragPivot=null;dragBaseline=[];syncTransform();
   });
   renderer.domElement.addEventListener('click',onSceneClick);
+  renderer.domElement.addEventListener('contextmenu',onSceneContextMenu);
+  document.addEventListener('pointerdown',onOutsideMenu);
   rebuildScene();syncTransform();resize();sizeObserver=new ResizeObserver(resize);sizeObserver.observe(viewport.value!);
   frameSampleAt=performance.now();raf=requestAnimationFrame(frame);
   window.addEventListener('keydown',onKey);
@@ -468,6 +577,8 @@ onMounted(()=>{
 onUnmounted(()=>{
   cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
   renderer?.domElement.removeEventListener('click',onSceneClick);
+  renderer?.domElement.removeEventListener('contextmenu',onSceneContextMenu);
+  document.removeEventListener('pointerdown',onOutsideMenu);
   transform?.detach();transform?.dispose();
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
   if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
@@ -475,7 +586,7 @@ onUnmounted(()=>{
   pixelGeometry?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
 watch(fixtures,()=>{rebuildScene();syncTransform();},{deep:true});
-watch(selectedId,()=>{rebuildScene();syncTransform();});
+watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
 </script>
@@ -495,11 +606,18 @@ watch([positionSnap,showGrid],updateGrid);
         <template v-for="group in fixtureGroups" :key="group">
           <div class="tree-group">⌄ &nbsp; / {{ group }}</div>
           <button v-for="f in fixtures.filter(item=>(item.group?.trim()||'STAGE')===group)" :key="f.id" class="tree-item"
-            :class="{selected:selectedId===f.id,hidden:!f.visible}" @click="selectedId=f.id">
+            :class="{selected:selectedIds.includes(f.id),primary:selectedId===f.id,hidden:!f.visible}"
+            @click="selectFixture(f.id,$event.ctrlKey||$event.metaKey,$event.shiftKey)"
+            @contextmenu.prevent="openMenu($event,f.id)">
             <span class="fixture-mark"></span><span class="fixture-name">{{ f.name }}</span>
             <small>{{ f.locked?'LOCK · ':'' }}{{ f.visible?'':'HIDE · ' }}{{ f.pixels }}px</small>
           </button>
         </template>
+        <div class="selection-toolbar"><b>{{ selectionCount }} SELECTED</b>
+          <button @click="selectAll" title="Select all (Ctrl+A)">ALL</button>
+          <button @click="selectInverse" title="Invert selection">INVERT</button>
+          <button @click="selectGroup" title="Select active group">GROUP</button>
+        </div>
         <button class="add-entity" @click="addFixture">＋ ADD LED STRIP</button>
         <div class="sidebar-bottom">
           <div class="panel-title">OUTPUT PATCH <span class="dim-label">SIM</span></div>
@@ -511,7 +629,7 @@ watch([positionSnap,showGrid],updateGrid);
       </aside>
       <main class="main">
         <div class="viewport-head">
-          <span>◈ &nbsp; 3D EDITOR</span>
+          <span>◈ &nbsp; 3D EDITOR <small class="selection-counter"> / {{selectionCount}} SELECTED</small></span>
           <div class="viewport-head-actions"><button title="Isometric focus (F)" @click="setView('ISO')">ISO</button><button title="Front (1)" @click="setView('FRONT')">FRONT</button><button title="Top (2)" @click="setView('TOP')">TOP</button><button title="Right (3)" @click="setView('RIGHT')">RIGHT</button></div>
         </div>
         <div class="editor-tools">
@@ -530,7 +648,7 @@ watch([positionSnap,showGrid],updateGrid);
           <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
         </div>
         <div class="viewport" ref="viewport">
-          <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CLICK STRIP TO SELECT · DRAG AXIS TO MOVE/ROTATE · ORBIT / ZOOM</span></div>
+          <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CTRL/SHIFT + CLICK MULTI SELECT · RIGHT CLICK MENU · DRAG GROUP GIZMO</span></div>
           <div class="viewport-details">Z UP? <b>Y UP</b> &nbsp; · &nbsp; <b>{{ totalPixels }}</b> LEDS</div>
           <div class="viewport-axis">X <span>Y</span> Z</div>
         </div>
@@ -553,16 +671,28 @@ watch([positionSnap,showGrid],updateGrid);
       </main>
       <aside class="sidebar inspector">
         <div class="panel-title">INSPECTOR <span class="muted">01</span></div>
-        <div class="inspector-heading"><span class="fixture-mark"></span><input aria-label="Fixture name" class="fixture-name-input" v-model="current.name" maxlength="100" @focus="beginEdit" @change="commitEdit" /></div>
+        <div class="inspector-heading"><span class="fixture-mark"></span>
+          <input aria-label="Fixture name" class="fixture-name-input" v-model="current.name" maxlength="100" @focus="beginEdit" @change="commitEdit" />
+          <span class="select-total">{{selectionCount}}</span></div>
+        <div class="multi-description" v-if="selectionCount>1">GROUP TRANSFORM · {{editableCount}} movable · {{selectionCount-editableCount}} locked/hidden</div>
         <div class="inspector-actions">
           <button title="Duplicate selected strip" @click="addDuplicate">⊞ DUPLICATE</button>
-          <button title="Delete selected strip" :disabled="fixtures.length<=1||current.locked" @click="deleteFixture">✕ DELETE</button>
+          <button title="Delete selected unlocked strips" :disabled="fixtures.length<=1||!selectedFixtures.some(f=>!f.locked)" @click="deleteFixture">✕ DELETE</button>
         </div>
         <div class="inspector-switches">
           <label><input type="checkbox" :checked="current.visible" @change="toggleSelectedVisibility" /> VISIBLE</label>
           <label><input type="checkbox" :checked="current.locked" @change="toggleSelectedLock" /> LOCK</label>
         </div>
         <label class="field"><span>Group</span><input class="group-input" v-model="current.group" maxlength="40" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
+        <div class="multi-ops">
+          <label>GROUP SELECTED <input v-model="bulkGroup" maxlength="40" aria-label="Batch group name" /></label>
+          <button @click="applyBulkGroup" :disabled="!editableCount">APPLY</button>
+        </div>
+        <div class="multi-align"><span>ALIGN TO ACTIVE</span>
+          <button :disabled="selectionCount<2" @click="alignSelected('x')">X</button>
+          <button :disabled="selectionCount<2" @click="alignSelected('y')">Y</button>
+          <button :disabled="selectionCount<2" @click="alignSelected('z')">Z</button>
+        </div>
         <div class="section-label">GEOMETRY / FIXTURE</div>
         <label class="field"><span>Length</span><div class="control"><input v-model.number="current.length" type="range" min="0.2" max="10" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><input v-model.number="current.length" class="num" type="number" min="0.1" max="100" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><em>m</em></div></label>
         <label class="field"><span>Pixel count</span><div class="control"><input v-model.number="current.pixels" type="range" min="1" max="600" step="1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/><input v-model.number="current.pixels" class="num" type="number" min="1" max="2000" step="1" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></div></label>
@@ -573,7 +703,7 @@ watch([positionSnap,showGrid],updateGrid);
         <label class="field"><span>Angle Z</span><input v-model.number="current.angle" type="number" step="1" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
         <div class="panel-note">Drag the coloured gizmo axes directly in 3D. Snap precision is set above; numeric edits remain available for exact values.</div>
         <div class="section-label">EFFECT / PARAMETERS</div>
-        <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Spatial Gradient</option></select></label>
+        <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Strip Gradient</option><option value="spatial-wave">World-space Wave</option><option value="spatial-blocks">3D Blocks</option></select></label>
         <label class="field"><span>Color</span><div class="control"><input v-model="color" type="color"/><b class="hex mono">{{ color.toUpperCase() }}</b></div></label>
         <label class="field"><span>Speed</span><div class="control"><input v-model.number="speed" type="range" min="0" max="3" step="0.01"/><span class="value">{{ speed.toFixed(2) }}</span></div></label>
         <label class="field"><span>Brightness</span><div class="control"><input v-model.number="brightness" type="range" min="0" max="1" step="0.01"/><span class="value">{{ Math.round(brightness*100) }}%</span></div></label>
@@ -584,5 +714,22 @@ watch([positionSnap,showGrid],updateGrid);
       </aside>
     </div>
     <footer class="status"><span class="live-dot"></span><span>PREVIEW ENGINE</span><span class="separator"></span><span><b>{{ fps||'—' }}</b> FPS</span><span class="separator"></span><span>{{ totalPixels }} PIXELS</span><div class="status-spacer"></div><span>OUTPUT DISABLED</span><span class="separator"></span><span>3D: {{ toolMode.toUpperCase() }} · {{ positionSnap ? positionSnap+'m' : 'FREE' }}</span><span class="separator"></span><span>NO SERVER</span><span class="version">FLUXCUE / V0.1</span></footer>
+    <div v-if="contextMenu.visible" class="scene-context-menu" role="menu"
+      :style="{left:contextMenu.x+'px',top:contextMenu.y+'px'}" @contextmenu.prevent>
+      <div class="context-title">{{selectionCount}} FIXTURE{{selectionCount===1?'':'S'}} SELECTED</div>
+      <button @click="selectAll">SELECT ALL <kbd>Ctrl+A</kbd></button>
+      <button @click="selectGroup">SELECT GROUP</button>
+      <button @click="selectInverse">INVERT SELECTION</button>
+      <div class="context-rule"></div>
+      <button @click="toolMode='translate';contextMenu.visible=false">MOVE <kbd>M</kbd></button>
+      <button @click="toolMode='rotate';contextMenu.visible=false">ROTATE <kbd>R</kbd></button>
+      <button @click="addDuplicate">DUPLICATE <kbd>Ctrl+D</kbd></button>
+      <button @click="setSelectedVisibility(false)">HIDE</button>
+      <button @click="setSelectedVisibility(true)">SHOW</button>
+      <button @click="setSelectedLock(true)">LOCK</button>
+      <button @click="setSelectedLock(false)">UNLOCK</button>
+      <div class="context-rule"></div>
+      <button class="context-danger" @click="deleteFixture">DELETE <kbd>Del</kbd></button>
+    </div>
   </div>
 </template>

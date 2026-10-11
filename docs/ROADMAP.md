@@ -42,3 +42,8 @@ No dates promised until milestones' acceptance tests pass.
 - [ ] Drag-and-select 3D editor: Translate/rotate gizmos, per-axis snapping, grid, camera presets, mouse raycast, efficient mesh updates.
 - [ ] Scene operations: duplicate/delete/rename/group, show/lock, undo/redo, persistent editable export/import.
 - [x] PR feature code CI 38161826358 **28/28 PASS**; Pages deployment and manual Brave interaction proof still pending.
+
+## Editor batch: multi-select, context commands and spatial look development (2026-10-11)
+- [ ] PR multi-object move/rotate, Ctrl/Shift and context menu, batch groups/visibility/locking, align, history tests PASS.
+- [ ] Spatial pure pixel coordinates and two 3D preview effects PASS.
+- [ ] Site published with green deployment and verified by user in Brave.

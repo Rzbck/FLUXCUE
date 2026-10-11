@@ -72,3 +72,9 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Single Ctrl+Z reverts one full gizmo drag (not each frame), redo; numeric undo, add/duplicate/delete fixture; lock prevents transform/delete and hidden fixture cannot be picked.
 - [ ] Export/import fixtures with group/visible/locked; backward-compatible old `0.1.0` saved projects.
 - [ ] Verify 1920x1080 and 1366x768; no credentials or network output from preview.
+
+## Multi-select and world-space FX batch
+- [ ] CI: no errors, old + new tests, both Pages and release builds plus security scan.
+- [ ] UI at 1920x1080/1366x768: Ctrl/Shift multiple strips in viewport/outliner, right-click menu, batch transforms, align and lock/hide.
+- [ ] Group angle 90° around shared pivot, double GO, old JSON import, new spatial FX and export.
+- [ ] Manual Brave smoke after GitHub Pages deployment. Preview only; no server output.
