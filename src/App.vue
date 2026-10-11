@@ -13,10 +13,11 @@ import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,s
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
 import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
-import {commitHistory,stepHistory} from './core/editor-history.mjs';
+import {commitHistory,stepHistory,sameUndoableState} from './core/editor-history.mjs';
+import {DIFFUSERS,EMITTERS,optics,copyFixtures} from './core/led-optics.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
-type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
+type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string; ledSizeMm:number; emitterMode:'front'|'dual'; diffuser:'none'|'flat'|'tube' };
 type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
@@ -66,6 +67,8 @@ let autoNextTime=Infinity;
 let lastClockSaved=0;
 const storageKey='fluxcue.studio.project.v02';
 const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
+let fixtureClipboard:Fixture[]=[];
+let pasteSerial=0;
 const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
 const selectionCount = computed(() => selectedIds.value.length);
 const pixelFocus = ref(0);
@@ -149,11 +152,12 @@ function snapshotScene(): SceneSnapshot {
     color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},
     cueTargetMode:cueTargetMode.value,cueTargetIdsDraft:[...cueTargetIdsDraft.value] };
 }
-function rememberScene(previous: SceneSnapshot) {
+function rememberScene(previous: SceneSnapshot, exact=false) {
   const next=snapshotScene();
-  if(sameScene(previous,next)){historyBaseline=next;return;}
+  if(sameUndoableState(previous,next)){historyBaseline=next;return;}
   const baseline=historyBaseline;
-  const before=(baseline && !sameScene(baseline,previous))?baseline:previous;
+  const before=exact?previous:
+    (baseline && !sameUndoableState(baseline,previous)?baseline:previous);
   const result=commitHistory(undoStack.value,redoStack.value,before,next,100);
   undoStack.value=result.undo;redoStack.value=result.redo;
   historyBaseline=next;
@@ -162,7 +166,8 @@ function recordUntrackedEdits(){
   if(!hydrated||replaying||transforming||dragStart||editStart)return;
   const next=snapshotScene();
   if(!historyBaseline){historyBaseline=next;return;}
-  if(!sameScene(historyBaseline,next))rememberScene(historyBaseline);
+  if(!sameUndoableState(historyBaseline,next))rememberScene(historyBaseline);
+  else historyBaseline=next;
 }
 function restoreScene(previous: SceneSnapshot) {
   projectName.value=previous.projectName;
@@ -575,6 +580,22 @@ function generateLayout(){
     contextMenu.value.visible=false;
   }catch(error){alert('Layout generation failed: '+String(error));}
 }
+function copySelected(){
+  fixtureClipboard=selectedFixtures.value.map(f=>({...f}));
+  pasteSerial=0;contextMenu.value.visible=false;
+}
+function pasteSelected(){
+  if(!fixtureClipboard.length || fixtures.value.length>=500)return;
+  pasteSerial+=1;
+  const remaining=500-fixtures.value.length;
+  const before=snapshotScene();
+  const copies=copyFixtures(fixtureClipboard,fixtureClipboard.map(f=>f.id),
+    ()=>'s'+crypto.randomUUID(),Math.min(5,(positionSnap.value||0.1)*pasteSerial),remaining) as Fixture[];
+  if(!copies.length)return;
+  fixtures.value.push(...copies);selectedIds.value=copies.map(f=>f.id);
+  selectedId.value=copies[0].id;rememberScene(before);
+  contextMenu.value.visible=false;
+}
 function addDuplicate() {
   const before=snapshotScene(),copies:Fixture[]=[];
   for(const f of selectedFixtures.value){
@@ -868,9 +889,11 @@ function loadProject(event:Event){
 }
 function finishTransformDrag(){
   if(!dragStart)return;
-  transforming=false;controls.enabled=true;
-  rememberScene(dragStart);
+  const before=dragStart;
   dragStart=null;dragPivot=null;dragBaseline=[];
+  transforming=false;controls.enabled=true;
+  // A drag is an atomic history step, BEFORE any unrelated selection navigation.
+  rememberScene(before,true);
   syncTransform();
 }
 function onKey(e: KeyboardEvent) {
@@ -886,6 +909,8 @@ function onKey(e: KeyboardEvent) {
     if (e.code==='KeyS'){e.preventDefault();saveProject();}
     else if (e.code==='KeyA'){e.preventDefault();selectAll();}
     else if (e.code==='KeyD'){e.preventDefault();addDuplicate();}
+    else if (e.code==='KeyC'){e.preventDefault();copySelected();}
+    else if (e.code==='KeyV'){e.preventDefault();pasteSelected();}
     return;
   }
   if (e.code==='Escape'){contextMenu.value.visible=false;return;}
@@ -925,6 +950,9 @@ onMounted(()=>{
   updateTransformOptions();
   transform.addEventListener('mouseDown',()=>{
     controls.enabled=false;transforming=true;suppressSceneClick=true;
+    // Close any pending widget transaction BEFORE the 3D gesture starts.
+    commitEdit();recordUntrackedEdits();
+    historyBaseline=snapshotScene();
     dragStart=snapshotScene();
     dragBaseline=dragStart.fixtures.map(f=>({...f}));
     dragPivot=selectionPivot(editableFixtures(dragBaseline,selectedIds.value));
@@ -1071,6 +1099,8 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
           <span class="tool-separator"></span>
           <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
           <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
+          <button title="Copy selected LED strips (Ctrl+C)" @click="copySelected">⧉ COPY <kbd>Ctrl+C</kbd></button>
+          <button title="Paste copied strips (Ctrl+V)" :disabled="!fixtureClipboard.length" @click="pasteSelected">▣ PASTE <kbd>Ctrl+V</kbd></button>
         </div>
         <div class="viewport" ref="viewport">
           <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CTRL/SHIFT + CLICK MULTI SELECT · RIGHT CLICK MENU · DRAG GROUP GIZMO</span></div>
@@ -1225,6 +1255,8 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
       <div class="context-rule"></div>
       <button @click="toolMode='translate';contextMenu.visible=false">MOVE <kbd>M</kbd></button>
       <button @click="toolMode='rotate';contextMenu.visible=false">ROTATE <kbd>R</kbd></button>
+      <button @click="copySelected">COPY <kbd>Ctrl+C</kbd></button>
+      <button @click="pasteSelected" :disabled="!fixtureClipboard.length">PASTE <kbd>Ctrl+V</kbd></button>
       <button @click="addDuplicate">DUPLICATE <kbd>Ctrl+D</kbd></button>
       <button @click="setSelectedVisibility(false)">HIDE</button>
       <button @click="setSelectedVisibility(true)">SHOW</button>
