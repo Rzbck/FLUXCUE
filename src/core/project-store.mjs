@@ -46,6 +46,7 @@ export function parseStudioProject(json){
  return {fixtures,cues,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
   activeIndex:Number.isInteger(d.activeIndex)?Math.max(0,Math.min(cues.length-1,d.activeIndex)):0,
   collapsedGroups:Array.isArray(d.collapsedGroups)?d.collapsedGroups.filter(s=>typeof s==='string').slice(0,100):[],
+  collapsedPanels:Object.fromEntries(['scene','arrays','patch','cues','geometry','effects','pixel'].map(k=>[k,d.collapsedPanels?.[k]===true])),
   autoPlay:d.autoPlay===true,speed:finite(d.speed,0,3)?d.speed:.35,
   brightness:finite(d.brightness,0,1)?d.brightness:.75,
   activeLayers,showTime,running:d.running!==false,blackout:d.blackout===true};

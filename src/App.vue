@@ -220,7 +220,7 @@ function togglePanel(name:keyof typeof collapsedPanels.value){
 }
 function serializableProject(){
   return {fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
-    autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,
+    autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,collapsedPanels:collapsedPanels.value,
     activeLayers:activeLayers.value,showTime,running:running.value,blackout:blackout.value};
 }
 function persistLocal(){
@@ -246,6 +246,7 @@ function restoreLocal(){
     selectedId.value=parsed.selectedId;selectedIds.value=parsed.selectedIds;
     activeIndex.value=parsed.activeIndex;
     collapsedGroups.value=parsed.collapsedGroups;
+    Object.assign(collapsedPanels.value,parsed.collapsedPanels);
     autoPlay.value=parsed.autoPlay;
     speed.value=parsed.speed;brightness.value=parsed.brightness;
     activeLayers.value=parsed.activeLayers as ActiveLayer[];
@@ -796,7 +797,7 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
     <header class="top">
       <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>0.1 ALPHA</small></span></div>
       <div class="top-center"><span class="project-name">DEMO INSTALLATION</span><span class="separator"></span><span class="muted">SHOW A</span></div>
-      <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
+      <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':saveState==='READY'?'LOCAL READY':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
     </header>
     <div class="workspace">
       <aside class="sidebar left">
