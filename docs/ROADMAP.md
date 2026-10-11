@@ -41,4 +41,4 @@ No dates promised until milestones' acceptance tests pass.
 ## 2026-10-11 spatial editor batch — proof pending
 - [ ] Drag-and-select 3D editor: Translate/rotate gizmos, per-axis snapping, grid, camera presets, mouse raycast, efficient mesh updates.
 - [ ] Scene operations: duplicate/delete/rename/group, show/lock, undo/redo, persistent editable export/import.
-- [ ] Green public PR CI and GitHub Pages deployment; manual Brave screenshot + interaction proof still needed.
+- [x] PR feature code CI 38161826358 **28/28 PASS**; Pages deployment and manual Brave interaction proof still pending.

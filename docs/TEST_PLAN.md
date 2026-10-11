@@ -66,7 +66,7 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Browser acceptance at target resolutions still NOT RUN, hence #4 remains open.
 
 ## Spatial editor and CAD-style interactions
-- [ ] Public PR CI and Pages build: TypeScript, build, tests, security, asset checks pass for `TransformControls` integration.
+- [x] PR #16 run 38161826358: TypeScript, Vite ordinary/Pages builds, **28/28 tests**, source/dist security scans and path check PASS. Runtime browser interaction remains UNTESTED.
 - [ ] Brave: click on any tiny LED line to select; drag X/Y/Z translation gizmo or Z-angle gizmo, orbit only when gizmo released.
 - [ ] Snap accuracy 1cm and 5cm, 1°/15°; FREE mode; grid show/hide, camera presets.
 - [ ] Single Ctrl+Z reverts one full gizmo drag (not each frame), redo; numeric undo, add/duplicate/delete fixture; lock prevents transform/delete and hidden fixture cannot be picked.
