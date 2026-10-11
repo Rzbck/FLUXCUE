@@ -49,7 +49,7 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Third-party `punycode` deprecation in console: present, not root cause of the two noted warnings. Browser runtime/smoke still NOT RUN.
 
 ## GitHub Pages smoke preview (2026-10-11)
-- [ ] Pages PR CI builds `--mode pages`; 16+ tests pass and Pages path validator PASS.
+- [x] Pages PR CI run 38155300548: regular build and `--mode pages` PASS, 16/16 tests, public source/dist scans PASS, `PAGES PASS` for `/FLUXCUE/`.
 - [ ] GitHub Pages source is configured to `GitHub Actions` by the repository owner.
 - [ ] Public Pages deploy workflow succeeds after merge on protected `main`.
 - [ ] Verify real `https://rzbck.github.io/FLUXCUE/` loads static assets and the Three.js view in Brave (1920×1080 and 1366×768); test GO/BACK, changes and JSON import/export.
