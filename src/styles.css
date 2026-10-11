@@ -182,3 +182,17 @@ input,select,.field select,.num,.number-wide,.group-input,.cue-edit input,.layou
 input[type=range],input[type=checkbox]{accent-color:#bdbdbd}
 :focus-visible{outline:2px solid #bbb!important;outline-offset:1px}
 @media(max-width:1200px){.cue-target,.cue-hint{display:none!important}.cue-actions{gap:4px}.transport-btn{padding:6px}.cue-edit-name{max-width:150px}}
+
+/* Final monochrome overrides for legacy alpha widgets still carrying blue accents. */
+.cue-row.playing,.cue-row.playing:hover{background:#303030;box-shadow:inset 2px 0 #ddd;color:#f4f4f4}
+.cue-effect,.cue-fade,.cue-number,.cue-caret,.cue-target{color:#aaa}
+.layout-builder{background:#151515;border-color:#333}
+.layout-builder>span,.selection-counter,.group-header,.group-name,.scene-context-menu{color:#bbb}
+.selection-toolbar{border-color:#282828}
+.viewport-head,.search{border-color:#292929}
+.viewport-details b,.viewport-overlay b{color:#d0d0d0}
+.inspector-heading,.cue-actions,.cue-edit,.inspector-switches{background:#121212}
+.scene-context-menu{background:#171717;border-color:#505050;box-shadow:0 12px 36px #000c}
+.scene-context-menu button:hover{background:#2c2c2c}
+.scene-context-menu kbd{color:#999}
+.metric-row b,.value,.hex{color:#d3d3d3}
