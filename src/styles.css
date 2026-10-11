@@ -83,3 +83,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 
 .export-pixel-map{background:transparent;color:#9dc4dc;border:1px solid #394e60;border-radius:3px;padding:7px;margin:0 12px 12px;font-size:9px;font-weight:750;letter-spacing:.6px}
 .export-pixel-map:hover:not(:disabled){background:#253b4d}
+
+/* Parameterized fixtures: compact scene generation, selected as one editable array */
+.layout-builder{margin:8px 12px;display:flex;flex-direction:column;gap:7px;padding:9px;border:1px solid #34475b;background:#192632;border-radius:4px}
+.layout-builder>span{font-size:9px;color:#9bb9d1;font-weight:750;letter-spacing:.7px}
+.layout-builder select,.layout-builder input{background:#233446;border:1px solid #42576a;color:#d6e4f0;border-radius:3px;font-size:10px;padding:5px;min-width:0}
+.layout-builder>div{display:flex;gap:7px}
+.layout-builder label{display:flex;align-items:center;flex:1;gap:4px;color:#8ca4b9;font-size:9px}
+.layout-builder input{width:100%;max-width:64px}
+.layout-builder button{background:#2a4155;border:1px solid #50708b;border-radius:3px;color:#cce2f4;font-weight:750;font-size:9px;padding:7px;cursor:pointer}
+.layout-builder button:hover:not(:disabled){background:#355772}

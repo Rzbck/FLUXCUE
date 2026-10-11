@@ -7,6 +7,7 @@ import { duplicateFixture, sameScene, sanitizeFixture } from './core/scene-edito
 import {chooseSelection, editableFixtures, selectionPivot, transformGroup, scenePixelPosition, spatialWave, spatialBlocks} from './core/spatial-selection.mjs';
 import { describePatch } from './core/patch.mjs';
 import { virtualPixelRows } from './core/pixel-map.mjs';
+import { createFixtureArray } from './core/layouts.mjs';
 import { fadeFactor, blendChannel, advancePreviewClock } from './core/cue-engine.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
@@ -30,6 +31,9 @@ const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
 const contextMenu = ref({visible:false,x:0,y:0});
 const bulkGroup = ref('STAGE');
+const layoutType = ref<'ROW X'|'ROW Z'|'RING XY'>('ROW X');
+const layoutCount = ref(6);
+const layoutSpacing = ref(0.6);
 const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
 const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
 const selectionCount = computed(() => selectedIds.value.length);
@@ -288,6 +292,21 @@ function selectInverse() {
   if(inverse.length){selectedIds.value=inverse;selectedId.value=inverse[0];}
   contextMenu.value.visible=false;
 }
+function generateLayout(){
+  const remaining=500-fixtures.value.length;
+  if(remaining<2){alert('Limit of 500 fixtures reached');return;}
+  const count=Math.min(Math.max(2,Math.round(layoutCount.value)||2),32,remaining);
+  try{
+    const before=snapshotScene();
+    const template=sanitizeFixture(current.value);
+    const created=createFixtureArray(template,layoutType.value,count,layoutSpacing.value,()=>'s'+crypto.randomUUID());
+    fixtures.value.push(...created);
+    selectedIds.value=created.map(f=>f.id);
+    selectedId.value=created[0].id;
+    rememberScene(before);
+    contextMenu.value.visible=false;
+  }catch(error){alert('Layout generation failed: '+String(error));}
+}
 function addDuplicate() {
   const before=snapshotScene(),copies:Fixture[]=[];
   for(const f of selectedFixtures.value){
@@ -341,8 +360,8 @@ function alignSelected(axis:'x'|'y'|'z') {
 function openMenu(event:MouseEvent,id?:string) {
   event.preventDefault();event.stopPropagation();
   if(id && !selectedIds.value.includes(id))selectFixture(id);
-  contextMenu.value={visible:true,x:Math.min(event.clientX,window.innerWidth-225),
-    y:Math.min(event.clientY,window.innerHeight-380)};
+  contextMenu.value={visible:true,x:Math.max(8,Math.min(event.clientX,window.innerWidth-225)),
+    y:Math.max(8,Math.min(event.clientY,window.innerHeight-380))};
 }
 function pickFixture(event:MouseEvent):string|undefined {
   if(!renderer || !camera)return;
@@ -640,6 +659,13 @@ watch([positionSnap,showGrid],updateGrid);
           <button @click="selectGroup" title="Select active group">GROUP</button>
         </div>
         <button class="add-entity" @click="addFixture">＋ ADD LED STRIP</button>
+        <div class="layout-builder">
+          <span>PARAMETRIC LED ARRAY</span>
+          <select aria-label="Array layout" v-model="layoutType"><option>ROW X</option><option>ROW Z</option><option>RING XY</option></select>
+          <div><label>COUNT <input type="number" v-model.number="layoutCount" min="2" max="32" step="1"/></label>
+            <label>STEP m <input type="number" v-model.number="layoutSpacing" min=".05" max="10" step=".05"/></label></div>
+          <button @click="generateLayout" :disabled="fixtures.length>498">＋ GENERATE & SELECT</button>
+        </div>
         <button class="export-pixel-map" :disabled="totalPixels>100000" @click="exportPixelCsv" title="Download an offline CSV of every LED world position and virtual DMX slots">↓ PIXEL MAP CSV</button>
         <div class="sidebar-bottom">
           <div class="panel-title">OUTPUT PATCH <span class="dim-label">SIM</span></div>
