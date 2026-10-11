@@ -414,64 +414,99 @@ function forgetLocal(){
   if(!confirm('Reset local project and start from this current session? This deletes ONLY the saved browser copy.'))return;
   try{localStorage.removeItem(storageKey);saveState.value='READY';}catch{saveState.value='ERROR';}
 }
-function disposeStrips() {
-  if (!scene) return;
-  for (const mesh of strips.values()) {
-    scene.remove(mesh);mesh.dispose();
-    (mesh.material as THREE.Material).dispose();
-  }
-  strips.clear();
+function removeFixtureMesh(map:Map<string,THREE.InstancedMesh>,id:string){
+  const mesh=map.get(id);
+  if(!mesh)return;
+  scene.remove(mesh);mesh.dispose();
+  (mesh.material as THREE.Material).dispose();
+  map.delete(id);
+}
+function disposeStrips(){
+  if(!scene)return;
+  for(const map of [strips,rearStrips,ledBodies,diffusers])
+    for(const id of [...map.keys()])removeFixtureMesh(map,id);
   tintColors.clear();
-  for (const line of hitLines.values()) {
-    scene.remove(line);line.geometry.dispose();
-    (line.material as THREE.Material).dispose();
+  for(const line of hitLines.values()){
+    scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();
   }
   hitLines.clear();
 }
-function rebuildScene() {
-  if (!scene || !pixelGeometry) return;
-  const live=new Set(fixtures.value.filter(f=>f.visible).map(f=>f.id));
-  for (const [id,mesh] of strips) {
-    if (live.has(id)) continue;
-    scene.remove(mesh);mesh.dispose();(mesh.material as THREE.Material).dispose();strips.delete(id);
+function ensureFixtureMesh(map:Map<string,THREE.InstancedMesh>,f:Fixture,
+  geometry:THREE.BufferGeometry,material:THREE.Material,enabled=true,mode=''){
+  if(!enabled){removeFixtureMesh(map,f.id);material.dispose();return undefined;}
+  let mesh=map.get(f.id);
+  if(mesh && (mesh.count!==f.pixels || mesh.userData.mode!==mode)){
+    removeFixtureMesh(map,f.id);mesh=undefined;
   }
-  for (const [id,line] of hitLines) {
-    if (live.has(id)) continue;
+  if(mesh){material.dispose();return mesh;}
+  mesh=new THREE.InstancedMesh(geometry,material,f.pixels);
+  mesh.frustumCulled=false;mesh.userData.fixtureId=f.id;mesh.userData.mode=mode;
+  map.set(f.id,mesh);scene.add(mesh);
+  const base=new THREE.Color('#666666');
+  for(let i=0;i<f.pixels;i++)mesh.setColorAt(i,base);
+  if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+  return mesh;
+}
+function rebuildScene(){
+  if(!scene || !pixelGeometry)return;
+  const live=new Set(fixtures.value.filter(f=>f.visible).map(f=>f.id));
+  for(const map of [strips,rearStrips,ledBodies,diffusers])
+    for(const id of [...map.keys()])if(!live.has(id))removeFixtureMesh(map,id);
+  for(const [id,line] of hitLines)if(!live.has(id)){
     scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();hitLines.delete(id);
   }
-  for (const raw of fixtures.value) {
-    const f=sanitizeFixture(raw);
-    if (!f.visible) continue;
-    const n=f.pixels;
-    let mesh=strips.get(f.id);
-    if (!mesh || mesh.count!==n) {
-      if (mesh) {scene.remove(mesh);mesh.dispose();(mesh.material as THREE.Material).dispose();}
-      mesh=new THREE.InstancedMesh(pixelGeometry,new THREE.MeshBasicMaterial({color:0xffffff}),n);
-      mesh.frustumCulled=false;mesh.userData.fixtureId=f.id;strips.set(f.id,mesh);scene.add(mesh);
-      for(let i=0;i<n;i++) mesh.setColorAt(i,new THREE.Color('#6688aa'));
-      if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
-    }
-    const a=THREE.MathUtils.degToRad(f.angle);
-    const dx=Math.cos(a),dy=Math.sin(a);
-    for (let i=0;i<n;i++) {
+  for(const raw of fixtures.value){
+    const f=sanitizeFixture(raw);if(!f.visible)continue;
+    const o=optics(f),n=f.pixels;
+    const front=ensureFixtureMesh(strips,f,pixelGeometry,
+      new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.FrontSide}),true,'front')!;
+    const rear=ensureFixtureMesh(rearStrips,f,pixelGeometry,
+      new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.FrontSide}),o.emitterMode==='dual','rear');
+    const body=ensureFixtureMesh(ledBodies,f,bodyGeometry,
+      new THREE.MeshBasicMaterial({color:'#171717'}),true,'body')!;
+    const cover=o.diffuser==='tube'?tubeGeometry:flatGeometry;
+    const diffuser=ensureFixtureMesh(diffusers,f,cover,
+      new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,
+        opacity:o.diffuser==='tube'?0.47:0.57,depthWrite:false,side:THREE.DoubleSide}),
+      o.diffuser!=='none',o.diffuser);
+    const a=THREE.MathUtils.degToRad(f.angle),dx=Math.cos(a),dy=Math.sin(a);
+    const size=o.ledSizeMm/1000;
+    const segmentLength=Math.max(0.001,f.length/n);
+    for(let i=0;i<n;i++){
       const t=n<=1?0:(i/(n-1)-0.5)*f.length;
-      dummy.position.set(f.x+dx*t,f.y+dy*t,f.z);
-      dummy.scale.setScalar(selectedIds.value.includes(f.id)?1.55:1);
-      dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
+      const x=f.x+dx*t,y=f.y+dy*t,z=f.z;
+      dummy.rotation.set(0,0,0);
+      dummy.position.set(x,y,z);
+      dummy.scale.set(size,size,size*.24);
+      dummy.updateMatrix();body.setMatrixAt(i,dummy.matrix);
+      dummy.position.z=z+size*.14;
+      dummy.scale.set(size*.76,size*.76,1);
+      dummy.updateMatrix();front.setMatrixAt(i,dummy.matrix);
+      if(rear){
+        dummy.position.z=z-size*.14;
+        dummy.rotation.set(0,Math.PI,0);
+        dummy.updateMatrix();rear.setMatrixAt(i,dummy.matrix);
+      }
+      if(diffuser){
+        dummy.rotation.set(0,0,o.diffuser==='tube'?a-Math.PI/2:a);
+        dummy.position.set(x,y,o.diffuser==='tube'?z:z+size*.5);
+        if(o.diffuser==='tube')dummy.scale.set(.009,segmentLength*1.05,.009);
+        else dummy.scale.set(segmentLength*1.05,.015,.003);
+        dummy.updateMatrix();diffuser.setMatrixAt(i,dummy.matrix);
+      }
     }
-    mesh.instanceMatrix.needsUpdate=true;
-    // Wider invisible raycast line makes a tiny LED strip easy to select by mouse.
+    for(const mesh of [front,rear,body,diffuser])if(mesh)mesh.instanceMatrix.needsUpdate=true;
     const points=[
       new THREE.Vector3(f.x-dx*f.length/2,f.y-dy*f.length/2,f.z),
       new THREE.Vector3(f.x+dx*f.length/2,f.y+dy*f.length/2,f.z)
     ];
     let line=hitLines.get(f.id);
-    if (!line) {
-      line=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+    if(!line){
+      line=new THREE.Line(new THREE.BufferGeometry(),
+        new THREE.LineBasicMaterial({color:'#404040',transparent:true,opacity:0.25,depthWrite:false}));
       line.userData.fixtureId=f.id;scene.add(line);hitLines.set(f.id,line);
     }
-    line.geometry.dispose();
-    line.geometry=new THREE.BufferGeometry().setFromPoints(points);
+    line.geometry.dispose();line.geometry=new THREE.BufferGeometry().setFromPoints(points);
   }
 }
 function syncTransform() {
@@ -721,12 +756,16 @@ function sampleCurrentPixel(f: Fixture, index: number, count: number, time: numb
 }
 function drawPixels(){
   for(const f of fixtures.value){
-    const mesh=strips.get(f.id);if(!mesh)continue;
-    for(let i=0;i<mesh.count;i++){
-      if(blackout.value)mesh.setColorAt(i,tmp.setRGB(0,0,0));
-      else {sampleCurrentPixel(f,i,mesh.count,showTime,tmp);mesh.setColorAt(i,tmp.multiplyScalar(brightness.value));}
+    const front=strips.get(f.id);if(!front)continue;
+    const back=rearStrips.get(f.id),cover=diffusers.get(f.id);
+    for(let i=0;i<front.count;i++){
+      if(blackout.value)tmp.setRGB(0,0,0);
+      else sampleCurrentPixel(f,i,front.count,showTime,tmp).multiplyScalar(brightness.value);
+      front.setColorAt(i,tmp);
+      if(back)back.setColorAt(i,tmp);
+      if(cover)cover.setColorAt(i,tmp);
     }
-    if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+    for(const mesh of [front,back,cover])if(mesh?.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
 }
 function frame(now:number){
