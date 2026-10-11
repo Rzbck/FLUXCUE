@@ -226,3 +226,7 @@ input[type=range],input[type=checkbox]{accent-color:#bdbdbd}
 .cue-row .cue-select{padding-right:7px}
 .cue-hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:1300px){.cue-hint{display:none}.cue-target{display:none}}
+
+.cue-preview-button{border:1px solid #555;background:#252525;color:#ddd;padding:7px 9px;border-radius:3px;font-size:9px;font-weight:750;white-space:nowrap}
+.cue-preview-button.active{background:#3a3a3a;border-color:#bdbdbd;color:#fff}
+.draft-preview-indicator{font-size:9px;font-weight:750;color:#d7c198;margin-left:8px;letter-spacing:.5px}

@@ -55,6 +55,7 @@ const layerBudget=12;
 const selectedTint=ref('#ffffff');
 const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
 const cueDraftColors=ref<Record<string,string>>({});
+const cuePreview=ref(false);
 const activeCueFixtureColor=computed(()=>cueDraftColors.value[current.value.id]||color.value);
 const runningCueIds=computed(()=>new Set(activeLayers.value.map(l=>l.cueId)));
 let hydrated=false;
@@ -645,6 +646,12 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*cueSpeed*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
+  if(cuePreview.value && (cueTargetMode.value==='ALL'||selectedIds.value.includes(f.id))){
+    // Explicit edit-preview overrides only the chosen cue target fixtures.
+    // It never changes saved cues, other pixels or actual playback layers.
+    return sampleFx(effect.value,cueDraftColors.value[f.id]||color.value,
+      index,count,time,output,f,speed.value);
+  }
   const tint=getTintColor(f);
   // Unpatched base look, used when all cues are stopped.
   // With no running cue, show each fixture's independent colour/tint.
@@ -700,6 +707,7 @@ function editCue(index:number){
 }
 function applyCue(index:number){
   if(index<0||index>=cues.value.length)return;
+  cuePreview.value=false;
   const c=cues.value[index];
   blackout.value=false;
   // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
@@ -1005,7 +1013,8 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
       </aside>
       <main class="main">
         <div class="viewport-head">
-          <span>◈ &nbsp; 3D EDITOR <small class="selection-counter"> / {{selectionCount}} SELECTED</small></span>
+          <span>◈ &nbsp; 3D EDITOR <small class="selection-counter"> / {{selectionCount}} SELECTED</small>
+          <small v-if="cuePreview" class="draft-preview-indicator">● CUE DRAFT PREVIEW · NO GO</small></span>
           <div class="viewport-head-actions"><button title="Isometric focus (F)" @click="setView('ISO')">ISO</button><button title="Front (1)" @click="setView('FRONT')">FRONT</button><button title="Top (2)" @click="setView('TOP')">TOP</button><button title="Right (3)" @click="setView('RIGHT')">RIGHT</button></div>
         </div>
         <div class="editor-tools">
@@ -1070,6 +1079,7 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
             <div class="cue-actions">
               <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">SELECTED FIXTURES</option><option value="ALL">ALL FIXTURES</option></select></label>
               <span class="cue-hint">EDIT FX/COLOUR IN INSPECTOR → SELECT TARGET → UPDATE (NO GO)</span>
+              <button class="cue-preview-button" :class="{active:cuePreview}" @click="cuePreview=!cuePreview">{{cuePreview?'◉ PREVIEW ON':'◯ PREVIEW DRAFT'}}</button>
               <button class="cue-update" @click="updateCue" title="Save edited cue without starting or stopping other cues">↻ UPDATE SELECTED CUE</button>
               <button class="cue-new" @click="addCue">＋ SAVE AS NEW CUE</button>
             </div>
