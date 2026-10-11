@@ -30,13 +30,25 @@ export function parseStudioProject(json){
    hold:finite(c.hold,.1,3600)?c.hold:5,mode:c.mode==='REPLACE'?'REPLACE':'ADD',
    targetIds:[...new Set(targets)]};
  });
+ const showTime=finite(d.showTime,0,10_000_000)?d.showTime:0;
+ const activeLayers=Array.isArray(d.activeLayers)?d.activeLayers.slice(-12).filter(layer=>
+   layer && typeof layer.id==='string' && typeof layer.cueId==='string' &&
+   cueIds.has(layer.cueId) && effects.has(layer.effect) && hex(layer.color) &&
+   finite(layer.fade,0,120) && finite(layer.started,0,10_000_000) &&
+   ['ADD','REPLACE'].includes(layer.mode)
+ ).map(layer=>({
+   id:layer.id.slice(0,80),cueId:layer.cueId,effect:layer.effect,color:layer.color,
+   fade:layer.fade,started:layer.started,mode:layer.mode,
+   targetIds:Array.isArray(layer.targetIds)?layer.targetIds.filter(id=>ids.has(id)).slice(0,500):[]
+ })):[];
  const selectedId=typeof d.selectedId==='string'&&ids.has(d.selectedId)?d.selectedId:fixtures[0].id;
  const selectedIds=Array.isArray(d.selectedIds)?d.selectedIds.filter(id=>ids.has(id)).slice(0,500):[selectedId];
  return {fixtures,cues,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
   activeIndex:Number.isInteger(d.activeIndex)?Math.max(0,Math.min(cues.length-1,d.activeIndex)):0,
   collapsedGroups:Array.isArray(d.collapsedGroups)?d.collapsedGroups.filter(s=>typeof s==='string').slice(0,100):[],
   autoPlay:d.autoPlay===true,speed:finite(d.speed,0,3)?d.speed:.35,
-  brightness:finite(d.brightness,0,1)?d.brightness:.75};
+  brightness:finite(d.brightness,0,1)?d.brightness:.75,
+  activeLayers,showTime,running:d.running!==false,blackout:d.blackout===true};
 }
 export function stringifyStudioProject(state){
  return JSON.stringify({schemaVersion:'0.1.0',project:{name:'FLUXCUE Studio Local'},...state});

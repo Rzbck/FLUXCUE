@@ -679,6 +679,13 @@ function loadProject(event:Event){
     scheduleSave();
   }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
 }
+function finishTransformDrag(){
+  if(!dragStart)return;
+  transforming=false;controls.enabled=true;
+  rememberScene(dragStart);
+  dragStart=null;dragPivot=null;dragBaseline=[];
+  syncTransform();
+}
 function onKey(e: KeyboardEvent) {
   const target=e.target as HTMLElement|null;
   if (!target || ['INPUT','TEXTAREA','SELECT'].includes(target.tagName)||target.isContentEditable)return;
@@ -748,11 +755,10 @@ onMounted(()=>{
       updateGridAnchor();
     } catch { /* Ignore transient out-of-bounds pointer input; no scene state is written. */ }
   });
-  transform.addEventListener('mouseUp',()=>{
-    transforming=false;controls.enabled=true;
-    if(dragStart)rememberScene(dragStart);
-    dragStart=null;dragPivot=null;dragBaseline=[];syncTransform();
-  });
+  transform.addEventListener('mouseUp',finishTransformDrag);
+  window.addEventListener('pointerup',finishTransformDrag);
+  window.addEventListener('pointercancel',finishTransformDrag);
+  window.addEventListener('blur',finishTransformDrag);
   renderer.domElement.addEventListener('click',onSceneClick);
   renderer.domElement.addEventListener('contextmenu',onSceneContextMenu);
   document.addEventListener('pointerdown',onOutsideMenu);
@@ -766,6 +772,9 @@ onUnmounted(()=>{
   if(saveTimer)clearTimeout(saveTimer);
   cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
   window.removeEventListener('beforeunload',persistLocal);
+  window.removeEventListener('pointerup',finishTransformDrag);
+  window.removeEventListener('pointercancel',finishTransformDrag);
+  window.removeEventListener('blur',finishTransformDrag);
   renderer?.domElement.removeEventListener('click',onSceneClick);
   renderer?.domElement.removeEventListener('contextmenu',onSceneContextMenu);
   document.removeEventListener('pointerdown',onOutsideMenu);
