@@ -2,17 +2,21 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { snapPosition, snapAngle, editorTransform, duplicateFixture, sameScene } from './core/scene-editor.mjs';
 import { describePatch } from './core/patch.mjs';
 import { fadeFactor, blendChannel, advancePreviewClock } from './core/cue-engine.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient';
-type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW' };
+type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean };
+type SceneSnapshot = { fixtures: Fixture[]; selectedId: string };
+type ToolMode = 'translate' | 'rotate';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string };
 const fixtures = ref<Fixture[]>([
-  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB' },
-  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB' },
-  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB' },
-  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB' }
+  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'STAGE',visible:true,locked:false },
+  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false },
+  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false },
+  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'FLOOR',visible:true,locked:false }
 ]);
 const cues = ref<Cue[]>([
   { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5' },
@@ -22,6 +26,13 @@ const cues = ref<Cue[]>([
 ]);
 const selectedId = ref('s1');
 const current = computed(() => fixtures.value.find(f=>f.id===selectedId.value) ?? fixtures.value[0]);
+const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group || 'STAGE'))]);
+const toolMode = ref<ToolMode>('translate');
+const positionSnap = ref(0.1);
+const angleSnap = ref(15);
+const showGrid = ref(true);
+const undoStack = ref<SceneSnapshot[]>([]);
+const redoStack = ref<SceneSnapshot[]>([]);
 const activeIndex = ref(1);
 const activeCue = computed(() => cues.value[activeIndex.value] ?? cues.value[0]);
 const running = ref(true);
@@ -44,6 +55,12 @@ const totalPixels = computed(() => fixtures.value.reduce((s,f)=>s+f.pixels,0));
 const totalUniverses = computed(() => fixtures.value.reduce((s,f)=>s+describePatch(f.pixels,f.format).universesUsed,0));
 const viewport = ref<HTMLElement|null>(null);
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, controls: OrbitControls;
+let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper;
+let transforming = false, suppressSceneClick = false;
+let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
+const raycaster = new THREE.Raycaster();
+const cursor = new THREE.Vector2();
+const hitLines = new Map<string, THREE.Line>();
 let sizeObserver: ResizeObserver | undefined, raf = 0, lastFrame = 0, frameSampleAt = 0, frameCount = 0, lastUiFrame = 0;
 // Snapshots freeze the *actual displayed* colour per pixel before a new cue.
 // A rapid GO/BACK mid-fade then starts from the existing look, not from the previous target.
@@ -61,30 +78,172 @@ function resize() {
   const w = Math.max(1, viewport.value.clientWidth), h = Math.max(1, viewport.value.clientHeight);
   renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
+function snapshotScene(): SceneSnapshot {
+  return { fixtures:fixtures.value.map(f=>({...f})),selectedId:selectedId.value };
+}
+function rememberScene(previous: SceneSnapshot) {
+  if (sameScene(previous,snapshotScene())) return;
+  undoStack.value=[...undoStack.value.slice(-79),previous];
+  redoStack.value=[];
+}
+function restoreScene(previous: SceneSnapshot) {
+  fixtures.value=previous.fixtures.map(f=>({...f}));
+  selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
+  fadeFrom.clear();
+  syncTransform();
+}
+function undoEdit() {
+  const previous=undoStack.value.pop();
+  if (!previous) return;
+  redoStack.value.push(snapshotScene());
+  restoreScene(previous);
+}
+function redoEdit() {
+  const next=redoStack.value.pop();
+  if (!next) return;
+  undoStack.value.push(snapshotScene());
+  restoreScene(next);
+}
+function beginEdit() {
+  if (!editStart) editStart=snapshotScene();
+}
+function commitEdit() {
+  if (editStart) rememberScene(editStart);
+  editStart=null;
+}
 function disposeStrips() {
   if (!scene) return;
-  for (const mesh of strips.values()) { scene.remove(mesh); mesh.dispose(); }
+  for (const mesh of strips.values()) {
+    scene.remove(mesh);mesh.dispose();
+    (mesh.material as THREE.Material).dispose();
+  }
   strips.clear();
+  for (const line of hitLines.values()) {
+    scene.remove(line);line.geometry.dispose();
+    (line.material as THREE.Material).dispose();
+  }
+  hitLines.clear();
 }
 function rebuildScene() {
   if (!scene || !pixelGeometry) return;
-  disposeStrips();
-  for (const f of fixtures.value) {
-    const n = Math.max(1, Math.floor(f.pixels));
-    const mat = new THREE.MeshBasicMaterial({ color:0xffffff });
-    const mesh = new THREE.InstancedMesh(pixelGeometry, mat, n);
-    const angle = f.angle * Math.PI/180;
-    for (let i=0;i<n;i++) {
-      const t = n<=1 ? 0 : (i/(n-1)-0.5)*f.length;
-      dummy.position.set(f.x+Math.cos(angle)*t, f.y+Math.sin(angle)*t, f.z);
-      dummy.scale.setScalar(f.id===selectedId.value ? 1.16 : 1);
-      dummy.updateMatrix(); mesh.setMatrixAt(i,dummy.matrix);
-      mesh.setColorAt(i,new THREE.Color(0x6688aa));
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor!.needsUpdate = true;
-    mesh.userData.fixtureId = f.id; scene.add(mesh); strips.set(f.id,mesh);
+  const live=new Set(fixtures.value.filter(f=>f.visible).map(f=>f.id));
+  for (const [id,mesh] of strips) {
+    if (live.has(id)) continue;
+    scene.remove(mesh);mesh.dispose();(mesh.material as THREE.Material).dispose();strips.delete(id);
   }
+  for (const [id,line] of hitLines) {
+    if (live.has(id)) continue;
+    scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();hitLines.delete(id);
+  }
+  for (const f of fixtures.value) {
+    if (!f.visible) continue;
+    const n=Math.max(1,Math.min(2000,Math.floor(f.pixels)||1));
+    let mesh=strips.get(f.id);
+    if (!mesh || mesh.count!==n) {
+      if (mesh) {scene.remove(mesh);mesh.dispose();(mesh.material as THREE.Material).dispose();}
+      mesh=new THREE.InstancedMesh(pixelGeometry,new THREE.MeshBasicMaterial({color:0xffffff}),n);
+      mesh.frustumCulled=false;mesh.userData.fixtureId=f.id;strips.set(f.id,mesh);scene.add(mesh);
+      for(let i=0;i<n;i++) mesh.setColorAt(i,new THREE.Color('#6688aa'));
+      if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
+    }
+    const a=THREE.MathUtils.degToRad(f.angle);
+    const dx=Math.cos(a),dy=Math.sin(a);
+    for (let i=0;i<n;i++) {
+      const t=n<=1?0:(i/(n-1)-0.5)*f.length;
+      dummy.position.set(f.x+dx*t,f.y+dy*t,f.z);
+      dummy.scale.setScalar(f.id===selectedId.value?1.4:1);
+      dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate=true;
+    // Wider invisible raycast line makes a tiny LED strip easy to select by mouse.
+    const points=[
+      new THREE.Vector3(f.x-dx*f.length/2,f.y-dy*f.length/2,f.z),
+      new THREE.Vector3(f.x+dx*f.length/2,f.y+dy*f.length/2,f.z)
+    ];
+    let line=hitLines.get(f.id);
+    if (!line) {
+      line=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+      line.userData.fixtureId=f.id;scene.add(line);hitLines.set(f.id,line);
+    }
+    line.geometry.dispose();
+    line.geometry=new THREE.BufferGeometry().setFromPoints(points);
+  }
+}
+function syncTransform() {
+  if (!transform || !transformProxy || transforming) return;
+  const f=current.value;
+  if (!f || !f.visible || f.locked) {transform.detach();return;}
+  transformProxy.position.set(f.x,f.y,f.z);
+  transformProxy.rotation.set(0,0,THREE.MathUtils.degToRad(f.angle));
+  transform.attach(transformProxy);
+  transform.setMode(toolMode.value);
+  transform.showX=toolMode.value==='translate';
+  transform.showY=toolMode.value==='translate';
+  transform.showZ=true; // Rubans tournant dans le plan XY : rotation autour de Z.
+}
+function updateTransformOptions() {
+  if (!transform) return;
+  transform.setMode(toolMode.value);
+  transform.setTranslationSnap(positionSnap.value>0?positionSnap.value:null);
+  transform.setRotationSnap(angleSnap.value>0?THREE.MathUtils.degToRad(angleSnap.value):null);
+  syncTransform();
+}
+function updateGrid() {
+  if (!scene)return;
+  if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
+  // Display is capped at 100 subdivisions; numeric snapping may be finer than floor grid.
+  const visual=Math.max(0.2,positionSnap.value || 0.5);
+  const divisions=Math.min(100,Math.round(20/visual));
+  grid=new THREE.GridHelper(20,divisions,'#405064','#23303e');
+  grid.visible=showGrid.value;
+  scene.add(grid);
+}
+function onSceneClick(event: MouseEvent) {
+  if (suppressSceneClick) {suppressSceneClick=false;return;}
+  if (transforming || !renderer || !camera || !hitLines.size)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  if (!rect.width||!rect.height)return;
+  cursor.set((event.clientX-rect.left)/rect.width*2-1,-((event.clientY-rect.top)/rect.height*2-1));
+  raycaster.setFromCamera(cursor,camera);
+  raycaster.params.Line.threshold=0.18;
+  const hit=raycaster.intersectObjects([...hitLines.values()],false)[0];
+  const id=hit?.object.userData.fixtureId as string|undefined;
+  if (id && fixtures.value.some(f=>f.id===id && f.visible)) selectedId.value=id;
+}
+function setView(view: 'ISO'|'FRONT'|'TOP'|'RIGHT') {
+  if (!controls || !camera)return;
+  const center=current.value;
+  const target=new THREE.Vector3(center.x,center.y,center.z);
+  const distance=Math.max(6,Math.min(30,center.length*2.3));
+  controls.target.copy(target);
+  camera.up.set(0,1,0);
+  if (view==='ISO')camera.position.copy(target).add(new THREE.Vector3(distance*0.7,distance*0.5,distance));
+  if (view==='FRONT')camera.position.copy(target).add(new THREE.Vector3(0,0,distance));
+  if (view==='RIGHT')camera.position.copy(target).add(new THREE.Vector3(distance,0,0));
+  if (view==='TOP'){camera.up.set(0,0,-1);camera.position.copy(target).add(new THREE.Vector3(0,distance,0.001));}
+  camera.lookAt(target);controls.update();
+}
+function addDuplicate() {
+  const before=snapshotScene();
+  const f=current.value;
+  const id='s'+crypto.randomUUID();
+  const copy=duplicateFixture(f,id,positionSnap.value);
+  fixtures.value.push(copy);
+  selectedId.value=id;
+  rememberScene(before);
+}
+function deleteFixture() {
+  if (fixtures.value.length<=1 || current.value.locked)return;
+  const before=snapshotScene();
+  fixtures.value=fixtures.value.filter(f=>f.id!==selectedId.value);
+  selectedId.value=fixtures.value[0].id;
+  rememberScene(before);
+}
+function toggleSelectedVisibility() {
+  const before=snapshotScene();current.value.visible=!current.value.visible;rememberScene(before);
+}
+function toggleSelectedLock() {
+  const before=snapshotScene();current.value.locked=!current.value.locked;rememberScene(before);
 }
 function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color) {
   const p = count <= 1 ? 0 : index/(count-1);
@@ -190,10 +349,12 @@ function resetClock() {
   lastFrame=0;
 }
 function addFixture() {
+  const before=snapshotScene();
   const i=fixtures.value.length+1;
-  const id='s'+Date.now().toString(36);
-  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:60,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB'});
+  const id='s'+crypto.randomUUID();
+  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:60,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:current.value.group,visible:true,locked:false});
   selectedId.value=id;
+  rememberScene(before);
 }
 function saveProject() {
   const data={schemaVersion:'0.1.0',project:{name:'FLUXCUE Demo'},fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value};
@@ -210,7 +371,9 @@ function loadProject(event: Event) {
     if (data.schemaVersion!=='0.1.0'||!Array.isArray(data.fixtures)||!Array.isArray(data.cues)||data.fixtures.length>500||data.cues.length>3000)throw new Error('Invalid project');
     const restored:Fixture[]=data.fixtures.map((f:Fixture)=>{
       if (!f||typeof f.id!=='string'||typeof f.name!=='string'||!Number.isInteger(f.pixels)||f.pixels<1||f.pixels>2000||!Number.isFinite(f.length)||f.length<=0||f.length>100||!['RGB','RGBW'].includes(f.format)||![f.x,f.y,f.z,f.angle].every(x=>Number.isFinite(x)))throw new Error('Invalid fixture');
-      return {id:f.id.slice(0,80),name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,format:f.format};
+      return {id:f.id.slice(0,80),name:f.name.slice(0,100),pixels:f.pixels,length:f.length,x:f.x,y:f.y,z:f.z,angle:f.angle,format:f.format,
+        group:typeof f.group==='string'&&f.group.trim() ? f.group.trim().slice(0,40) : 'STAGE',
+        visible:f.visible!==false,locked:f.locked===true};
     });
     const restoredCues:Cue[]=data.cues.map((c:Cue)=>{
       if (!c||typeof c.id!=='string'||typeof c.name!=='string'||!['solid','rainbow','chase','gradient'].includes(c.effect)||!Number.isFinite(c.fade)||c.fade<0||c.fade>120||typeof c.color!=='string'||!/^#[a-fA-F0-9]{6}$/.test(c.color))throw new Error('Invalid cue');
@@ -218,15 +381,29 @@ function loadProject(event: Event) {
     });
     if (!restored.length)throw new Error('Project needs at least one fixture');
     if (!restoredCues.length)throw new Error('Project needs at least one cue');
-    fixtures.value=restored;cues.value=restoredCues;selectedId.value=restored[0].id;resetClock();applyCue(0);
+    fixtures.value=restored;cues.value=restoredCues;selectedId.value=restored[0].id;undoStack.value=[];redoStack.value=[];editStart=null;resetClock();applyCue(0);
   }).catch(err=>alert('Import failed: '+String(err))).finally(()=>{(event.target as HTMLInputElement).value='';});
 }
 function onKey(e: KeyboardEvent) {
-  const target=e.target as HTMLElement;
-  if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName)||target.isContentEditable||e.ctrlKey||e.metaKey||e.altKey)return;
+  const target=e.target as HTMLElement|null;
+  if (!target || ['INPUT','TEXTAREA','SELECT'].includes(target.tagName)||target.isContentEditable)return;
+  if (e.ctrlKey||e.metaKey) {
+    if (e.code==='KeyZ'){e.preventDefault();e.shiftKey?redoEdit():undoEdit();}
+    else if (e.code==='KeyY'){e.preventDefault();redoEdit();}
+    else if (e.code==='KeyS'){e.preventDefault();saveProject();}
+    return;
+  }
+  if (e.altKey||transforming)return;
   if (e.code==='Space'){e.preventDefault();running.value=!running.value;}
   if (e.code==='KeyG' && !e.shiftKey){e.preventDefault();applyCue((activeIndex.value+1)%cues.value.length);}
   if (e.code==='KeyG' && e.shiftKey){e.preventDefault();applyCue(Math.max(0,activeIndex.value-1));}
+  if (e.code==='KeyM'){e.preventDefault();toolMode.value='translate';}
+  if (e.code==='KeyR'){e.preventDefault();toolMode.value='rotate';}
+  if (e.code==='KeyF'){e.preventDefault();setView('ISO');}
+  if (e.code==='Digit1'){setView('FRONT');}
+  if (e.code==='Digit2'){setView('TOP');}
+  if (e.code==='Digit3'){setView('RIGHT');}
+  if (e.code==='Delete' && !current.value.locked){e.preventDefault();deleteFixture();}
 }
 onMounted(()=>{
   scene=new THREE.Scene();scene.background=new THREE.Color('#10151d');
@@ -237,21 +414,45 @@ onMounted(()=>{
   viewport.value!.appendChild(renderer.domElement);
   controls=new OrbitControls(camera,renderer.domElement);
   controls.target.set(0,1.35,0);controls.enableDamping=true;controls.dampingFactor=0.065;controls.update();
-  scene.add(new THREE.GridHelper(14,28,'#35424f','#202a35'));
+  updateGrid();
   scene.add(new THREE.AxesHelper(0.65));
   const bounds=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-3,0,-2),new THREE.Vector3(3,3.1,2)),'#35404c');
   scene.add(bounds);
   pixelGeometry=new THREE.SphereGeometry(0.038,7,5);
-  rebuildScene();resize();sizeObserver=new ResizeObserver(resize);sizeObserver.observe(viewport.value!);
+  transformProxy=new THREE.Object3D();scene.add(transformProxy);
+  transform=new TransformControls(camera,renderer.domElement);
+  scene.add(transform.getHelper());
+  updateTransformOptions();
+  transform.addEventListener('mouseDown',()=>{
+    transforming=true;suppressSceneClick=true;dragStart=snapshotScene();
+  });
+  transform.addEventListener('objectChange',()=>{
+    if (!current.value || current.value.locked || !current.value.visible)return;
+    const next=editorTransform(current.value,transformProxy.position,transformProxy.rotation.z);
+    Object.assign(current.value,next);
+  });
+  transform.addEventListener('mouseUp',()=>{
+    transforming=false;
+    if (dragStart)rememberScene(dragStart);
+    dragStart=null;
+  });
+  renderer.domElement.addEventListener('click',onSceneClick);
+  rebuildScene();syncTransform();resize();sizeObserver=new ResizeObserver(resize);sizeObserver.observe(viewport.value!);
   frameSampleAt=performance.now();raf=requestAnimationFrame(frame);
   window.addEventListener('keydown',onKey);
 });
 onUnmounted(()=>{
   cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
-  if (scene) disposeStrips();pixelGeometry?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
+  renderer?.domElement.removeEventListener('click',onSceneClick);
+  transform?.detach();transform?.dispose();
+  if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
+  if (scene)disposeStrips();
+  pixelGeometry?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
-watch(fixtures,rebuildScene,{deep:true});
-watch(selectedId,rebuildScene);
+watch(fixtures,()=>{rebuildScene();syncTransform();},{deep:true});
+watch(selectedId,()=>{rebuildScene();syncTransform();});
+watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
+watch([positionSnap,showGrid],updateGrid);
 </script>
 
 <template>
@@ -266,10 +467,14 @@ watch(selectedId,rebuildScene);
         <div class="panel-title"><span>SCENE / PATCH</span><span class="mono muted">01</span></div>
         <div class="search">⌕ &nbsp; FIXTURES <span class="muted">{{ fixtures.length }}</span></div>
         <div class="tree-heading">⌄ &nbsp; DEMO INSTALLATION <span class="site-dot"></span></div>
-        <div class="tree-group">⌄ &nbsp; / STAGE</div>
-        <button v-for="f in fixtures" :key="f.id" class="tree-item" :class="{selected:selectedId===f.id}" @click="selectedId=f.id">
-          <span class="fixture-mark"></span><span class="fixture-name">{{ f.name }}</span><small>{{ f.pixels }}px</small>
-        </button>
+        <template v-for="group in fixtureGroups" :key="group">
+          <div class="tree-group">⌄ &nbsp; / {{ group }}</div>
+          <button v-for="f in fixtures.filter(item=>item.group===group)" :key="f.id" class="tree-item"
+            :class="{selected:selectedId===f.id,hidden:!f.visible}" @click="selectedId=f.id">
+            <span class="fixture-mark"></span><span class="fixture-name">{{ f.name }}</span>
+            <small>{{ f.locked?'LOCK · ':'' }}{{ f.visible?'':'HIDE · ' }}{{ f.pixels }}px</small>
+          </button>
+        </template>
         <button class="add-entity" @click="addFixture">＋ ADD LED STRIP</button>
         <div class="sidebar-bottom">
           <div class="panel-title">OUTPUT PATCH <span class="dim-label">SIM</span></div>
@@ -280,9 +485,27 @@ watch(selectedId,rebuildScene);
         </div>
       </aside>
       <main class="main">
-        <div class="viewport-head"><span>◈ &nbsp; 3D STAGE VIEW</span><div><span class="muted">ORBIT · PAN · ZOOM</span><span class="pipe">│</span><b>PIXELS</b></div></div>
+        <div class="viewport-head">
+          <span>◈ &nbsp; 3D EDITOR</span>
+          <div class="viewport-head-actions"><button title="Isometric focus (F)" @click="setView('ISO')">ISO</button><button title="Front (1)" @click="setView('FRONT')">FRONT</button><button title="Top (2)" @click="setView('TOP')">TOP</button><button title="Right (3)" @click="setView('RIGHT')">RIGHT</button></div>
+        </div>
+        <div class="editor-tools">
+          <button :class="{active:toolMode==='translate'}" title="Move selected LED strip (M)" @click="toolMode='translate'">✥ MOVE <kbd>M</kbd></button>
+          <button :class="{active:toolMode==='rotate'}" title="Rotate selected LED strip (R)" @click="toolMode='rotate'">◌ ROTATE <kbd>R</kbd></button>
+          <span class="tool-separator"></span>
+          <label>GRID SNAP <select v-model.number="positionSnap" title="Translation snap in meters">
+            <option :value="0">FREE</option><option :value="0.01">1 cm</option><option :value="0.05">5 cm</option><option :value="0.1">10 cm</option><option :value="0.25">25 cm</option><option :value="0.5">50 cm</option><option :value="1">1 m</option>
+          </select></label>
+          <label>ANGLE <select v-model.number="angleSnap" title="Rotation snap">
+            <option :value="0">FREE</option><option :value="1">1°</option><option :value="5">5°</option><option :value="15">15°</option><option :value="30">30°</option><option :value="45">45°</option><option :value="90">90°</option>
+          </select></label>
+          <label class="grid-checkbox"><input type="checkbox" v-model="showGrid"/> GRID</label>
+          <span class="tool-separator"></span>
+          <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
+          <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
+        </div>
         <div class="viewport" ref="viewport">
-          <div class="viewport-overlay"><b>PREVISUALIZATION</b><span>LIVE PREVIEW · SOFTWARE ONLY</span></div>
+          <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CLICK STRIP TO SELECT · DRAG AXIS TO MOVE/ROTATE · ORBIT / ZOOM</span></div>
           <div class="viewport-details">Z UP? <b>Y UP</b> &nbsp; · &nbsp; <b>{{ totalPixels }}</b> LEDS</div>
           <div class="viewport-axis">X <span>Y</span> Z</div>
         </div>
@@ -305,14 +528,25 @@ watch(selectedId,rebuildScene);
       </main>
       <aside class="sidebar inspector">
         <div class="panel-title">INSPECTOR <span class="muted">01</span></div>
-        <div class="inspector-heading"><span class="fixture-mark"></span><b>{{ current.name }}</b></div>
+        <div class="inspector-heading"><span class="fixture-mark"></span><input aria-label="Fixture name" class="fixture-name-input" v-model="current.name" maxlength="100" @focus="beginEdit" @change="commitEdit" /></div>
+        <div class="inspector-actions">
+          <button title="Duplicate selected strip" @click="addDuplicate">⊞ DUPLICATE</button>
+          <button title="Delete selected strip" :disabled="fixtures.length<=1||current.locked" @click="deleteFixture">✕ DELETE</button>
+        </div>
+        <div class="inspector-switches">
+          <label><input type="checkbox" :checked="current.visible" @change="toggleSelectedVisibility" /> VISIBLE</label>
+          <label><input type="checkbox" :checked="current.locked" @change="toggleSelectedLock" /> LOCK</label>
+        </div>
+        <label class="field"><span>Group</span><input class="group-input" v-model="current.group" maxlength="40" @focus="beginEdit" @change="commitEdit"/></label>
         <div class="section-label">GEOMETRY / FIXTURE</div>
-        <label class="field"><span>Length</span><div class="control"><input v-model.number="current.length" type="range" min="0.2" max="10" step="0.1"/><input v-model.number="current.length" class="num" type="number" min="0.1" max="100" step="0.1"/><em>m</em></div></label>
-        <label class="field"><span>Pixel count</span><div class="control"><input v-model.number="current.pixels" type="range" min="1" max="600" step="1"/><input v-model.number="current.pixels" class="num" type="number" min="1" max="2000" step="1"/></div></label>
-        <label class="field"><span>Channel format</span><select v-model="current.format"><option>RGB</option><option>RGBW</option></select></label>
-        <label class="field"><span>Position Y</span><input v-model.number="current.y" type="number" step="0.1" class="number-wide"/></label>
-        <label class="field"><span>Position X</span><input v-model.number="current.x" type="number" step="0.1" class="number-wide"/></label>
-        <label class="field"><span>Angle</span><input v-model.number="current.angle" type="number" step="5" class="number-wide"/></label>
+        <label class="field"><span>Length</span><div class="control"><input v-model.number="current.length" type="range" min="0.2" max="10" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/><input v-model.number="current.length" class="num" type="number" min="0.1" max="100" step="0.1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/><em>m</em></div></label>
+        <label class="field"><span>Pixel count</span><div class="control"><input v-model.number="current.pixels" type="range" min="1" max="600" step="1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/><input v-model.number="current.pixels" class="num" type="number" min="1" max="2000" step="1" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></div></label>
+        <label class="field"><span>Channel format</span><select v-model="current.format" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"><option>RGB</option><option>RGBW</option></select></label>
+        <label class="field"><span>Position Y</span><input v-model.number="current.y" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
+        <label class="field"><span>Position X</span><input v-model.number="current.x" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
+        <label class="field"><span>Position Z</span><input v-model.number="current.z" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
+        <label class="field"><span>Angle Z</span><input v-model.number="current.angle" type="number" step="1" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="commitEdit"/></label>
+        <div class="panel-note">Drag the coloured gizmo axes directly in 3D. Snap precision is set above; numeric edits remain available for exact values.</div>
         <div class="section-label">EFFECT / PARAMETERS</div>
         <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Spatial Gradient</option></select></label>
         <label class="field"><span>Color</span><div class="control"><input v-model="color" type="color"/><b class="hex mono">{{ color.toUpperCase() }}</b></div></label>
@@ -324,6 +558,6 @@ watch(selectedId,rebuildScene);
         <div class="panel-note">Selected fixture uses virtual channel allocation. Real controller mapping is not implemented.</div>
       </aside>
     </div>
-    <footer class="status"><span class="live-dot"></span><span>PREVIEW ENGINE</span><span class="separator"></span><span><b>{{ fps||'—' }}</b> FPS</span><span class="separator"></span><span>{{ totalPixels }} PIXELS</span><div class="status-spacer"></div><span>OUTPUT DISABLED</span><span class="separator"></span><span>NO SERVER CONNECTED</span><span class="version">FLUXCUE / V0.1</span></footer>
+    <footer class="status"><span class="live-dot"></span><span>PREVIEW ENGINE</span><span class="separator"></span><span><b>{{ fps||'—' }}</b> FPS</span><span class="separator"></span><span>{{ totalPixels }} PIXELS</span><div class="status-spacer"></div><span>OUTPUT DISABLED</span><span class="separator"></span><span>3D: {{ toolMode.toUpperCase() }} · {{ positionSnap ? positionSnap+'m' : 'FREE' }}</span><span class="separator"></span><span>NO SERVER</span><span class="version">FLUXCUE / V0.1</span></footer>
   </div>
 </template>

@@ -42,3 +42,9 @@ Keyboard-tab accessible; strong focus ring; not rely on red/green alone; undo ed
 - Same saved project produces identical physical address mapping after reload.
 
 See `docs/TEST_PLAN.md`.
+
+## Direct spatial editing controls (implementation sprint, browser check pending)
+- M = translate selected LED strip with 3D XYZ gizmo; R = rotate around Z axis, independent orbit camera. Click strip pixels/line to select; left outliner remains alternative.
+- Snap menu exposes FREE, 1/5/10/25/50 cm, 1 m; degrees FREE, 1/5/15/30/45/90; visible floor grid can be hidden separately.
+- ISO/front/top/right camera preset buttons; F and 1/2/3 keyboard. Ctrl/Cmd+Z/Y and Shift+Z scene history; Ctrl/Cmd+S downloads JSON; Delete removes selected if unlocked. Inputs are exempt from global editor hotkeys.
+- Grouped outliner, visible/locked fixtures and duplicate/delete actions. Numerical inspector remains for exact engineering edits. Mouse 3D and responsive view acceptance require real browser test.
