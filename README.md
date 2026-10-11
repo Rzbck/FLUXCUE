@@ -2,9 +2,21 @@
 
 **Open-source browser-based 3D LED show design, pixel mapping and live control.**
 
-> Project status: **foundation / architecture + source-software audit**. The repository is now the canonical source of truth for ChatGPT, Codex and contributors. Not production-ready: no validated Art-Net output or Oracle deployment yet.
+> Project status: **V0.1 browser Studio simulation + source audit**. Vue/Three.js typecheck/build and 6 pure patch tests passed on GitHub Actions; interactive browser smoke test pending. Not production-ready: no Art-Net output or Oracle deployment.
 
 FLUXCUE aims to combine a compact professional dark UI, interactive 3D LED layout, parameter-driven procedural effects, cues/timeline, and a headless always-on show engine. It will target Oracle Linux ARM64 and optional site-local playback through secure connections to MikroTik routers and Art-Net/sACN controllers.
+
+## Run the prototype (SIMULATOR only)
+
+```sh
+git clone https://github.com/Rzbck/FLUXCUE.git
+cd FLUXCUE
+npm install
+npm run dev
+# http://127.0.0.1:5173
+```
+
+Run `npm run build` to typecheck/build, or `npm test` for virtual RGB/RGBW patch boundary tests. [GitHub Actions](https://github.com/Rzbck/FLUXCUE/actions) checks builds and tests on `main`. The browser demo emits **no Art-Net/sACN**.
 
 ## Start here
 

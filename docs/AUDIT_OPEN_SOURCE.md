@@ -111,3 +111,15 @@ Scale: 1 weak alignment to FLUXCUE requirement, 5 highly relevant. Based on docu
 - https://github.com/cyberboy666/artnet_led_mapper
 - https://github.com/heronarts/LX
 - https://github.com/heronarts/Chromatik
+
+## Screenshot-level UX observations (2026-10-11)
+Image references **linked, not copied into FLUXCUE** pending asset permission review:
+- ASLS Studio UI image: https://threejsresources.com/tool/asls-studio — integrated cue grid, stage preview, low profile transport, footer controls. Strong horizontal density and context synchronization. Need improve labels/contrast and reduce unnecessary duplicated navigation.
+- GeoPix reference: https://www.enviral-design.com/work/geopix.html — 3D stage as primary workspace with right-hand outliner/fixture attributes, timeline along bottom; ideal for spatial composition, but TouchDesigner runtime is a deployment constraint.
+- MoonLight live effects reference: https://github.com/MoonModules/MoonLight — live output + modular controls are attractive; its UI is not the target UX for operator cue programming.
+
+New source candidates to audit:
+- https://github.com/ASLS-org/WSC — binary transport/gateway related to Studio; GPL-3.0.
+- https://github.com/ASLS-org/cueOS — embedded C cue control project; GPL-3.0 and older, evaluate ideas only.
+- https://github.com/KRUKMAN/swietlik — emerging ASLS fork with AI/MCP-oriented feature roadmap (GPL-3.0), inspiration only; maturity unverified.
+For pinned research commits see [UPSTREAM_SNAPSHOT.md](UPSTREAM_SNAPSHOT.md).

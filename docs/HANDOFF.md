@@ -21,14 +21,14 @@ Professional compact dark browser Studio to create and preview LED strips, spati
 - Current HEAD **must be fetched** from GitHub; do not rely on the SHA above for newest content.
 
 ## Status and limits
-- Visual Studio **CODED-UNVERIFIED** until CI+browser smoke confirms.
-- Pure patch tests written but CI result must be inspected.
+- Studio source **BUILD-VERIFIED-CI**, but **NOT BROWSER-VERIFIED** until visual smoke in Brave/Chrome.
+- **CI VERIFIED** on run https://github.com/Rzbck/FLUXCUE/actions/runs/38144922167 — Vue/Three.js typecheck and build PASS; 6/6 patch tests PASS. Browser visual smoke has NOT been done.
 - No real live outputs; preview is SIMULATOR.
 - No server, user auth, database, Oracle deployment or MikroTik connection.
 - The first comparative audit is documented, but per-component code audit/benchmark/licensing review remains **OPEN** (issues #1, #2, #6).
 
 ## Next single goal
-**Issue #3**: check GitHub CI; make `npm run build` and `npm test` pass, inspect actual UI in Brave/Chrome 1920x1080 + 1366x768, fix regressions, refresh state/handoff. After that do #1 and #2 upstream code-level evaluations.
+**Issue #3**: CI already passed; inspect UI in Brave/Chrome at 1920x1080 + 1366x768, test import/export, input edge cases, cues and 3D interaction, fix regressions. Then #1/#2 upstream code audit. After that do #1 and #2 upstream code-level evaluations.
 
 ## User preferences / product intent
 - UX takes ASLS' compact dark show layout and 3D preview as its primary reference; deeper pixel editor/UX inspired by GeoPix, MoonLight effect graph, QLC+/xLights cues, LedFx audio ideas and FPP failover.

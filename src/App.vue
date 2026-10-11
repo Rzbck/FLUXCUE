@@ -48,6 +48,7 @@ const dummy = new THREE.Object3D();
 const colorA = new THREE.Color();
 const colorB = new THREE.Color();
 const tmp = new THREE.Color();
+const gradientEnd = new THREE.Color('#1b72a7');
 function resize() {
   if (!viewport.value || !renderer || !camera) return;
   const w = Math.max(1, viewport.value.clientWidth), h = Math.max(1, viewport.value.clientHeight);
@@ -86,8 +87,7 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
     const trail = ((p-t*speed.value*0.45)%1+1)%1;
     return result.set(hex).multiplyScalar(Math.max(0.025,1-trail*3.6));
   }
-  const a = new THREE.Color(hex), b = new THREE.Color('#1b72a7');
-  return result.copy(a).lerp(b,(Math.sin(p*Math.PI*2-t*speed.value*1.5)+1)/2);
+  return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*speed.value*1.5)+1)/2);
 }
 function drawPixels() {
   const blend = transitionDuration>0 ? Math.min(1,Math.max(0,(showTime-transitionAt)/transitionDuration)) : 1;
@@ -154,6 +154,7 @@ function loadProject(event: Event) {
       return {id:c.id.slice(0,80),name:c.name.slice(0,100),effect:c.effect,fade:c.fade,color:c.color};
     });
     if (!restored.length)throw new Error('Project needs at least one fixture');
+    if (!restoredCues.length)throw new Error('Project needs at least one cue');
     fixtures.value=restored;cues.value=restoredCues;selectedId.value=restored[0].id;activeIndex.value=0;
   }).catch(err=>alert('Import failed: '+String(err))).finally(()=>{(event.target as HTMLInputElement).value='';});
 }
