@@ -140,6 +140,19 @@ const strips = new Map<string, THREE.InstancedMesh>();
 const rearStrips = new Map<string, THREE.InstancedMesh>();
 const ledBodies = new Map<string, THREE.InstancedMesh>();
 const diffusers = new Map<string, THREE.InstancedMesh>();
+// World XYZ pixels are cached when geometry changes, not rebuilt by each effect.
+const worldPixelCache=new Map<string,Float32Array>();
+const worldScratch={x:0,y:0,z:0};
+function cachedWorldPixel(f:Fixture,index:number){
+  const data=worldPixelCache.get(f.id),k=index*3;
+  if(data&&k+2<data.length){
+    worldScratch.x=data[k];worldScratch.y=data[k+1];worldScratch.z=data[k+2];
+    return worldScratch;
+  }
+  const xyz=scenePixelPosition(f,index);
+  worldScratch.x=xyz.x;worldScratch.y=xyz.y;worldScratch.z=xyz.z;
+  return worldScratch;
+}
 let pixelGeometry: THREE.PlaneGeometry;
 let bodyGeometry: THREE.BoxGeometry;
 let tubeGeometry: THREE.CylinderGeometry;
@@ -450,7 +463,7 @@ function disposeStrips(){
   if(!scene)return;
   for(const map of [strips,rearStrips,ledBodies,diffusers])
     for(const id of [...map.keys()])removeFixtureMesh(map,id);
-  tintColors.clear();
+  tintColors.clear();worldPixelCache.clear();
   for(const line of hitLines.values()){
     scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();
   }
@@ -477,6 +490,7 @@ function rebuildScene(){
   const live=new Set(fixtures.value.filter(f=>f.visible).map(f=>f.id));
   for(const map of [strips,rearStrips,ledBodies,diffusers])
     for(const id of [...map.keys()])if(!live.has(id))removeFixtureMesh(map,id);
+  for(const id of [...worldPixelCache.keys()])if(!live.has(id))worldPixelCache.delete(id);
   for(const [id,line] of hitLines)if(!live.has(id)){
     scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();hitLines.delete(id);
   }
@@ -497,9 +511,11 @@ function rebuildScene(){
     const a=THREE.MathUtils.degToRad(f.angle),dx=Math.cos(a),dy=Math.sin(a);
     const size=o.ledSizeMm/1000;
     const segmentLength=Math.max(0.001,f.length/n);
+    const positions=new Float32Array(n*3);
     for(let i=0;i<n;i++){
       const t=n<=1?0:(i/(n-1)-0.5)*f.length;
       const x=f.x+dx*t,y=f.y+dy*t,z=f.z;
+      positions[i*3]=x;positions[i*3+1]=y;positions[i*3+2]=z;
       dummy.rotation.set(0,0,0);
       dummy.position.set(x,y,z);
       dummy.scale.set(size,size,size*.24);
@@ -520,6 +536,7 @@ function rebuildScene(){
         dummy.updateMatrix();diffuser.setMatrixAt(i,dummy.matrix);
       }
     }
+    worldPixelCache.set(f.id,positions);
     for(const mesh of [front,rear,body,diffuser])if(mesh)mesh.instanceMatrix.needsUpdate=true;
     const points=[
       new THREE.Vector3(f.x-dx*f.length/2,f.y-dy*f.length/2,f.z),
@@ -742,7 +759,7 @@ function onOutsideMenu(event:PointerEvent){
 function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color, fixture: Fixture, cueSpeed=speed.value) {
   const p = count <= 1 ? 0 : index/(count-1);
   if(ADVANCED_EFFECTS.includes(mode)){
-    const world=scenePixelPosition(sanitizeFixture(fixture),index);
+    const world=cachedWorldPixel(fixture,index);
     const sampled=effectSample(mode,p,world,t,cueSpeed);
     if(sampled.fire){
       const v=sampled.level;
@@ -752,7 +769,7 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   }
   if(mode==='spatial-wave' || mode==='spatial-blocks'){
     // Stable physical XYZ coordinates: moving a fixture changes how a wave crosses it.
-    const world=scenePixelPosition(sanitizeFixture(fixture),index);
+    const world=cachedWorldPixel(fixture,index);
     const amount=mode==='spatial-wave'?spatialWave(world,t,cueSpeed):spatialBlocks(world,t,cueSpeed);
     return result.set(hex).multiplyScalar(.06+amount*.94);
   }
