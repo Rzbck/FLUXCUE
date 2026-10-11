@@ -23,7 +23,7 @@ export function effectSample(mode,p,world,t,speed){
     return {level:clamp(Math.pow(ring,12)*.95+.04)};}
   case 'spatial-orbit':{const a=Math.atan2(y,x),arc=Math.cos(a-phase*1.9+z*.3);
     return {level:clamp(Math.pow(Math.max(0,arc),5))};}
-  case 'strobe':return {level:fract(phase*6)<.22?1:0};
+  case 'strobe':return {level:fract(t*Math.min(3,s*2))<.22?1:0}; // at most 3 Hz
   default:throw new RangeError('Unknown effect');
  }
 }
