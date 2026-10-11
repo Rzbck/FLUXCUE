@@ -55,7 +55,7 @@ const totalPixels = computed(() => fixtures.value.reduce((s,f)=>s+sanitizeFixtur
 const totalUniverses = computed(() => fixtures.value.reduce((s,f)=>s+describePatch(sanitizeFixture(f).pixels,f.format).universesUsed,0));
 const viewport = ref<HTMLElement|null>(null);
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, controls: OrbitControls;
-let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper;
+let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
 const raycaster = new THREE.Raycaster();
@@ -180,6 +180,7 @@ function syncTransform() {
   if (!f || !f.visible || f.locked) {transform.detach();return;}
   transformProxy.position.set(f.x,f.y,f.z);
   transformProxy.rotation.set(0,0,THREE.MathUtils.degToRad(f.angle));
+  updateGridAnchor();
   transform.attach(transformProxy);
   transform.setMode(toolMode.value);
   transform.showX=toolMode.value==='translate';
@@ -193,15 +194,30 @@ function updateTransformOptions() {
   transform.setRotationSnap(angleSnap.value>0?THREE.MathUtils.degToRad(angleSnap.value):null);
   syncTransform();
 }
+function updateGridAnchor() {
+  if (!grid || !current.value) return;
+  const f=sanitizeFixture(current.value);
+  const unit=positionSnap.value || 1;
+  // Fine grid follows the selected fixture, aligned to a stable world-space step.
+  // Recentring by whole snap cells keeps the grid from sliding under the pixels.
+  grid.position.set(Math.round(f.x/unit)*unit,0.003,Math.round(f.z/unit)*unit);
+}
 function updateGrid() {
   if (!scene)return;
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
-  // Display is capped at 100 subdivisions; numeric snapping may be finer than floor grid.
-  const visual=Math.max(0.2,positionSnap.value || 0.5);
-  const divisions=Math.min(100,Math.round(20/visual));
-  grid=new THREE.GridHelper(20,divisions,'#405064','#23303e');
-  grid.visible=showGrid.value;
+  if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
+  coarseGrid=new THREE.GridHelper(20,20,'#44576a','#263747');
+  coarseGrid.visible=showGrid.value;
+  scene.add(coarseGrid);
+  // 1 cm -> local 1m patch with 100 subdivisions; 5 cm -> 4m/80.
+  // Also preserve a 1m major floor grid for spatial orientation.
+  const unit=positionSnap.value || 1;
+  const size=positionSnap.value>0 ? Math.min(20,Math.max(1,unit*80)) : 20;
+  const divisions=Math.min(100,Math.round(size/unit));
+  grid=new THREE.GridHelper(size,divisions,'#4d657a','#304051');
+  grid.visible=showGrid.value && positionSnap.value>0 && positionSnap.value<1;
   scene.add(grid);
+  updateGridAnchor();
 }
 function onSceneClick(event: MouseEvent) {
   if (suppressSceneClick) {suppressSceneClick=false;return;}
@@ -436,6 +452,7 @@ onMounted(()=>{
     if (!current.value || current.value.locked || !current.value.visible)return;
     const next=editorTransform(current.value,transformProxy.position,transformProxy.rotation.z);
     Object.assign(current.value,next);
+    updateGridAnchor();
   });
   transform.addEventListener('mouseUp',()=>{
     transforming=false;
@@ -453,6 +470,7 @@ onUnmounted(()=>{
   renderer?.domElement.removeEventListener('click',onSceneClick);
   transform?.detach();transform?.dispose();
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
+  if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
   if (scene)disposeStrips();
   pixelGeometry?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
