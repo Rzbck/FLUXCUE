@@ -619,8 +619,9 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
   const tint=getTintColor(f);
   // Unpatched base look, used when all cues are stopped.
-  sampleFx(effect.value,'#ffffff',index,count,time,colorB,f);
-  let rgb=activeLayers.value.length ? [0.008,0.008,0.008] : [colorB.r,colorB.g,colorB.b];
+  // With no running cue, show each fixture's independent colour/tint.
+  // The draft cue colour must NOT repaint the entire scene as it is edited.
+  let rgb=activeLayers.value.length ? [0.008,0.008,0.008] : [1,1,1];
   for(const layer of activeLayers.value){
     if(!cueAppliesTo(layer,f.id))continue;
     // The timing of each cue is independent; a later GO never resets prior effects.
@@ -653,6 +654,17 @@ function frame(now:number){
   frameCount++;
   if(now-frameSampleAt>1000){fps.value=Math.round(frameCount*1000/(now-frameSampleAt));frameSampleAt=now;frameCount=0;}
 }
+function editCue(index:number){
+  if(index<0||index>=cues.value.length)return;
+  editIndex.value=index;
+  const c=cues.value[index];
+  effect.value=c.effect;color.value=c.color;speed.value=c.speed;
+  cueTargetMode.value=c.targetIds.length?'SELECTION':'ALL';
+  if(c.targetIds.length){
+    const ids=c.targetIds.filter(id=>fixtures.value.some(f=>f.id===id));
+    if(ids.length){selectedIds.value=ids;selectedId.value=ids[0];}
+  }
+}
 function applyCue(index:number){
   if(index<0||index>=cues.value.length)return;
   const c=cues.value[index];
@@ -661,7 +673,7 @@ function applyCue(index:number){
   const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
     mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35};
   activeLayers.value=[...activeLayers.value.filter(l=>l.cueId!==c.id).slice(-(layerBudget-1)),layer];
-  effect.value=c.effect;color.value=c.color;speed.value=c.speed;
+  // GO changes only the live cue stack, never the editor's draft palette.
   fadeStarted.value=showTime;fadeSeconds.value=c.fade;
   activeIndex.value=index;showSeconds.value=showTime;
   autoNextTime=cueNextAt(showTime,c.hold||5);
@@ -683,7 +695,7 @@ function addCue(){
   const before=snapshotScene();
   const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
     effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value};
-  cues.value.push(c);activeIndex.value=cues.value.length-1;
+  cues.value.push(c);editIndex.value=cues.value.length-1;
   rememberScene(before);
 }
 function normalizeCue(){
@@ -704,17 +716,23 @@ function updateCue(){
   rememberScene(before);
 }
 function moveActiveCue(direction:-1|1){
-  const from=activeIndex.value,to=from+direction;
+  const from=editIndex.value,to=from+direction;
   if(to<0||to>=cues.value.length)return;
   const before=snapshotScene();
+  const playingId=cues.value[activeIndex.value]?.id;
   const [cue]=cues.value.splice(from,1);cues.value.splice(to,0,cue);
-  activeIndex.value=to;rememberScene(before);
+  editIndex.value=to;
+  activeIndex.value=Math.max(0,cues.value.findIndex(c=>c.id===playingId));
+  rememberScene(before);
 }
 function removeActiveCue(){
   if(cues.value.length<=1)return;
-  const before=snapshotScene(),i=activeIndex.value;
+  const before=snapshotScene(),i=editIndex.value;
+  const playingId=cues.value[activeIndex.value]?.id;
   const [removed]=cues.value.splice(i,1);
-  stopCue(removed.id);activeIndex.value=Math.min(i,cues.value.length-1);
+  stopCue(removed.id);
+  editIndex.value=Math.min(i,cues.value.length-1);
+  activeIndex.value=Math.max(0,cues.value.findIndex(c=>c.id===playingId));
   rememberScene(before);
 }
 function resetClock(){
@@ -757,7 +775,7 @@ function loadProject(event:Event){
     fixtures.value=p.fixtures as Fixture[];
     cues.value=p.cues as Cue[];
     selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
-    activeIndex.value=p.activeIndex;collapsedGroups.value=p.collapsedGroups;
+    activeIndex.value=p.activeIndex;editIndex.value=p.activeIndex;groups.value=p.groups;collapsedGroups.value=p.collapsedGroups;
     Object.assign(collapsedPanels.value,p.collapsedPanels);
     speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
     activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;blackout.value=false;
@@ -903,19 +921,28 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
         <div class="panel-title"><span>SCENE / PATCH</span><span class="mono muted">01</span></div>
         <div class="search"><span>⌕ FIXTURES · {{fixtures.length}}</span><div class="group-actions"><button @click="collapseAllGroups" title="Collapse all groups">COLLAPSE</button><button @click="expandAllGroups" title="Expand all groups">EXPAND</button></div></div>
         <div class="tree-heading">⌄ &nbsp; DEMO INSTALLATION <span class="site-dot"></span></div>
-        <template v-for="group in fixtureGroups" :key="group">
-          <div class="group-header">
-            <button class="group-toggle" @click="toggleGroup(group)" :aria-expanded="!collapsedGroups.includes(group)" :title="collapsedGroups.includes(group)?'Expand group':'Collapse group'">{{collapsedGroups.includes(group)?'▸':'▾'}} &nbsp; /</button>
-            <input v-if="editingGroup===group" v-model="groupNameDraft" class="group-rename-input" maxlength="40" aria-label="Rename group" @keydown.enter="commitGroupRename" @keydown.esc="editingGroup=null" @blur="commitGroupRename"/>
-            <button v-else class="group-name" @click="selectGroupByName(group)" :title="'Select all strips in '+group">{{group}}</button>
-            <button class="group-rename" title="Rename group" @click="startGroupRename(group)">✎</button>
+        <div class="group-create">
+          <input v-model="newGroupName" maxlength="40" aria-label="New group name" placeholder="NEW GROUP NAME" @keydown.enter="createGroup"/>
+          <button @click="createGroup" title="Create named empty group">＋ GROUP</button>
+        </div>
+        <template v-for="group in fixtureGroups" :key="group||'UNGROUPED'">
+          <div class="group-header" @dragover.prevent @drop="dropOnGroup($event,group)">
+            <button class="group-toggle" @click="toggleGroup(group)" :aria-expanded="!collapsedGroups.includes(group)">{{collapsedGroups.includes(group)?'▸':'▾'}}</button>
+            <input v-if="group && editingGroup===group" v-model="groupNameDraft" class="group-rename-input" maxlength="40"
+              aria-label="Rename group" @keydown.enter="commitGroupRename" @keydown.esc="editingGroup=null" @blur="commitGroupRename"/>
+            <button v-else class="group-name" @click="selectGroupByName(group)" :title="'Select '+(group||'ungrouped')+' fixtures'">{{group||'UNGROUPED'}}</button>
+            <small class="group-count">{{fixtures.filter(f=>(f.group||'')===group).length}}</small>
+            <button v-if="group" class="group-rename" title="Rename group" @click="startGroupRename(group)">✎</button>
+            <button v-if="group" class="group-delete" title="Delete group, ungroup members" @click="removeGroup(group)">×</button>
           </div>
-          <button v-if="!collapsedGroups.includes(group)" v-for="f in fixtures.filter(item=>(item.group?.trim()||'STAGE')===group)" :key="f.id" class="tree-item"
+          <button v-if="!collapsedGroups.includes(group)"
+            v-for="f in fixtures.filter(item=>(item.group||'')===group)" :key="f.id"
+            class="tree-item" draggable="true" @dragstart="startFixtureDrag($event,f.id)" @dragend="draggedFixtureIds=[]"
             :class="{selected:selectedIds.includes(f.id),primary:selectedId===f.id,hidden:!f.visible}"
             @click="selectFixture(f.id,$event.ctrlKey||$event.metaKey,$event.shiftKey)"
             @contextmenu.prevent="openMenu($event,f.id)">
-            <span class="fixture-mark"></span><span class="fixture-name">{{ f.name }}</span>
-            <small>{{ f.locked?'LOCK · ':'' }}{{ f.visible?'':'HIDE · ' }}{{ f.pixels }}px</small>
+            <span class="fixture-mark"></span><span class="fixture-name">{{f.name}}</span>
+            <small>{{f.locked?'LOCK · ':''}}{{!f.visible?'HIDE · ':''}}{{f.pixels}}px</small>
           </button>
         </template>
         <div class="selection-toolbar"><b>{{ selectionCount }} SELECTED</b>
@@ -981,13 +1008,18 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
             </div>
             <div class="cue-fade-bar" role="progressbar" :aria-valuenow="Math.round(fadeProgress*100)" aria-valuemin="0" aria-valuemax="100" aria-label="Active cue transition progress"><span :style="{width:(fadeProgress*100)+'%'}"></span></div>
             <div class="cue-list">
-              <div v-for="(c,i) in cues" :key="c.id" class="cue-row" :class="{playing:activeIndex===i,layerOn:runningCueIds.has(c.id)}">
-                <button class="cue-select" @click="applyCue(i)" :title="'GO '+c.name">
-                  <span class="cue-number">{{String(i+1).padStart(2,'0')}}</span><span class="cue-caret">{{runningCueIds.has(c.id)?'●':'·'}}</span>
-                  <span class="cue-name">{{c.name}}</span><span class="cue-effect">{{c.effect.toUpperCase()}}</span>
+              <div v-for="(c,i) in cues" :key="c.id" class="cue-row"
+                :class="{playing:activeIndex===i,layerOn:runningCueIds.has(c.id),cueEditing:editIndex===i}">
+                <button class="cue-select" @click="editCue(i)" :title="'Edit '+c.name+' without playing it'">
+                  <span class="cue-number">{{String(i+1).padStart(2,'0')}}</span>
+                  <span class="cue-caret">{{editIndex===i?'✎':'·'}}</span>
+                  <span class="cue-name">{{c.name}}</span>
+                  <span class="cue-effect">{{c.effect.toUpperCase()}}</span>
                   <span class="cue-fade">{{Number(c.fade).toFixed(1)}}s</span>
-                  <span class="cue-target">{{c.targetIds.length?c.targetIds.length+' LED STRIPS':'ALL'}}</span>
+                  <span class="cue-target">{{c.targetIds.length?c.targetIds.length+' STRIPS':'ALL'}}</span>
+                  <span class="cue-swatch" :style="{backgroundColor:c.color}"></span>
                 </button>
+                <button class="cue-go" @click="applyCue(i)" :title="'GO '+c.name">GO</button>
                 <button v-if="runningCueIds.has(c.id)" class="cue-stop" :title="'Stop only '+c.name" @click="stopCue(c.id)">■</button>
               </div>
             </div>
@@ -1002,9 +1034,9 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
             </div>
             <div class="cue-actions">
               <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">SELECTED FIXTURES</option><option value="ALL">ALL FIXTURES</option></select></label>
-              <span class="cue-hint">CUE DRAFT FX + COLOR →</span>
-              <button class="cue-update" @click="updateCue" title="Overwrite selected cue's effect/color/targets, without stopping other running cues">↻ UPDATE CUE</button>
-              <button class="cue-new" @click="addCue">＋ NEW CUE</button>
+              <span class="cue-hint">EDIT FX/COLOUR IN INSPECTOR → SELECT TARGET → UPDATE (NO GO)</span>
+              <button class="cue-update" @click="updateCue" title="Save edited cue without starting or stopping other cues">↻ UPDATE SELECTED CUE</button>
+              <button class="cue-new" @click="addCue">＋ SAVE AS NEW CUE</button>
             </div>
           </div>
         </section>
@@ -1023,10 +1055,18 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
           <label><input type="checkbox" :checked="current.visible" @change="toggleSelectedVisibility" /> VISIBLE</label>
           <label><input type="checkbox" :checked="current.locked" @change="toggleSelectedLock" /> LOCK</label>
         </div>
-        <label class="field"><span>Group</span><input class="group-input" v-model="current.group" maxlength="40" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
+        <label class="field"><span>Group</span>
+          <select class="group-input" :value="current.group" @change="moveFixturesToGroup(($event.target as HTMLSelectElement).value,[current.id])">
+            <option value="">UNGROUPED</option><option v-for="group in groups" :key="group" :value="group">{{group}}</option>
+          </select>
+        </label>
         <div class="multi-ops">
-          <label>GROUP SELECTED <input v-model="bulkGroup" maxlength="40" aria-label="Batch group name" /></label>
-          <button @click="applyBulkGroup" :disabled="!editableCount">APPLY</button>
+          <label>MOVE SELECTED TO
+            <select v-model="bulkGroup" aria-label="Move selected fixtures to group">
+              <option value="">UNGROUPED</option><option v-for="g in groups" :key="g" :value="g">{{g}}</option>
+            </select>
+          </label>
+          <button @click="applyBulkGroup" :disabled="selectionCount<1">MOVE</button>
         </div>
         <div class="multi-align"><span>ALIGN TO ACTIVE</span>
           <button :disabled="selectionCount<2" @click="alignSelected('x')">X</button>
@@ -1051,8 +1091,18 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
         <button class="section-collapse inspector-section" @click="togglePanel('effects')" :aria-expanded="!collapsedPanels.effects">{{collapsedPanels.effects?'▸':'▾'}} CUE DRAFT / COLOUR</button>
         <template v-if="!collapsedPanels.effects">
         <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Strip Gradient</option><option value="spatial-wave">World-space Wave</option><option value="spatial-blocks">3D Blocks</option></select></label>
-        <label class="field"><span>Selected LED filter</span><div class="control"><input type="color" :value="current.tint" @input="paintSelection" @change="commitEdit"/><b class="hex mono">{{current.tint.toUpperCase()}}</b></div></label>
-        <label class="field"><span>Cue draft color</span><div class="control"><input v-model="color" type="color"/><b class="hex mono">{{color.toUpperCase()}}</b></div></label>
+        <label class="field"><span>ACTIVE STRIP COLOUR</span>
+          <div class="control"><input type="color" aria-label="Only active LED strip colour" :value="current.tint"
+            @pointerdown="beginEdit" @input="paintSelection" @change="commitEdit"/>
+            <b class="hex mono">{{current.tint.toUpperCase()}}</b>
+          </div>
+        </label>
+        <button class="tint-batch-button" :disabled="selectionCount<2" @click="tintSelectedExplicitly">APPLY ACTIVE COLOUR TO {{selectionCount}} SELECTED STRIPS</button>
+        <div class="panel-note">This picker changes ONLY the active strip. Use the button to apply the same filter to multiple selected strips.</div>
+        <label class="field"><span>CUE COLOUR (DRAFT)</span><div class="control">
+          <input v-model="color" aria-label="Cue draft color only" type="color" @pointerdown="beginEdit" @change="commitEdit"/>
+          <b class="hex mono">{{color.toUpperCase()}}</b>
+        </div></label>
         <label class="field"><span>Speed</span><div class="control"><input v-model.number="speed" type="range" min="0" max="3" step="0.01"/><span class="value">{{ speed.toFixed(2) }}</span></div></label>
         <label class="field"><span>Brightness</span><div class="control"><input v-model.number="brightness" type="range" min="0" max="1" step="0.01"/><span class="value">{{ Math.round(brightness*100) }}%</span></div></label>
         </template><button class="section-collapse inspector-section" @click="togglePanel('pixel')" :aria-expanded="!collapsedPanels.pixel">{{collapsedPanels.pixel?'▸':'▾'}} PIXEL / VIRTUAL PATCH</button>
