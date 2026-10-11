@@ -56,7 +56,11 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] No Oracle, SSH, Tailscale, live Art-Net/sACN access used by Pages.
 
 ## Milestone #4 cue fade / editing slice
-- [ ] New pure timing/fade test cases pass under public CI, along with existing security, patch and Pages tests.
+- [x] New pure timing/fade test cases pass in public PR CI 38159922632, with existing security, patch and Pages tests: **21/21 PASS**.
 - [ ] Studio browser demo: GO during an unfinished fade starts from the current visible colour; pause/resume/reset + cue edit/reorder and JSON import work in Brave.
 - [ ] Importing malformed cue data remains rejected without partial apply; avoid accidental output because preview only.
 - [ ] Rebuild GitHub Pages after successful protected PR merge; check external deployment succeeds.
+
+### Evidence
+- [x] PR #15 CI 38159922632 success; security scans on 41 tracked files and both generated dist variants; `PAGES PASS`.
+- [ ] Browser acceptance at target resolutions still NOT RUN, hence #4 remains open.
