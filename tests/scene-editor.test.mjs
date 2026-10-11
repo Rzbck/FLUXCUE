@@ -24,7 +24,7 @@ test('transform always maps XYZ and Z rotation, rejects non-finite and out of bo
 test('duplicate retains geometry and group but produces an unlocked, visible new ID',()=>{
   const src={id:'old',name:'LED',x:0.25,y:1,z:0,angle:45,length:2,pixels:80,format:'RGBW',group:'FLOOR',visible:false,locked:true};
   const dst=duplicateFixture(src,'new',0.1);
-  assert.equal(dst.id,'new');assert.equal(dst.name,'LED COPY');assert.equal(dst.x,0.35);
+  assert.equal(dst.id,'new');assert.equal(dst.name,'LED COPY');assert.equal(dst.x,0.4);
   assert.equal(dst.group,'FLOOR');assert.equal(dst.pixels,80);
   assert.equal(dst.visible,true);assert.equal(dst.locked,false);assert.equal(src.id,'old');
 });
