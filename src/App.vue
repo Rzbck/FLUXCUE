@@ -173,13 +173,12 @@ function snapshotScene(): SceneSnapshot {
     color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},
     cueTargetMode:cueTargetMode.value,cueTargetIdsDraft:[...cueTargetIdsDraft.value] };
 }
-function rememberScene(previous: SceneSnapshot, exact=false) {
+function rememberScene(previous: SceneSnapshot, _exact=false) {
   const next=snapshotScene();
   if(sameUndoableState(previous,next)){historyBaseline=next;return;}
-  const baseline=historyBaseline;
-  const before=exact?previous:
-    (baseline && !sameUndoableState(baseline,previous)?baseline:previous);
-  const result=commitHistory(undoStack.value,redoStack.value,before,next,100);
+  // Explicit mutations always restore precisely the snapshot taken before
+  // that mutation. Do not substitute a stale reactive watcher baseline.
+  const result=commitHistory(undoStack.value,redoStack.value,previous,next,100);
   undoStack.value=result.undo;redoStack.value=result.redo;
   historyBaseline=next;
 }
@@ -1128,12 +1127,29 @@ onMounted(()=>{
   window.addEventListener('pointerup',finishTransformDrag);
   window.addEventListener('pointercancel',finishTransformDrag);
   window.addEventListener('blur',finishTransformDrag);
+  // The smoke hook exists ONLY in --mode smoke builds. Production Pages has no
+  // test controller, so no browser-side API to mutate geometry bypassing the UI.
+  if(import.meta.env.MODE==='smoke'){
+    (window as Window & {__FLUXCUE_SMOKE__?:unknown}).__FLUXCUE_SMOKE__={
+      drag:(axis:'x'|'y'|'z',distance:number)=>{
+        if(!Number.isFinite(distance)||Math.abs(distance)>5)throw new RangeError('bad smoke displacement');
+        transform.dispatchEvent({type:'mouseDown'} as never);
+        transformProxy.position[axis]+=distance;
+        transform.dispatchEvent({type:'objectChange'} as never);
+        transform.dispatchEvent({type:'mouseUp'} as never);
+        return {position:{x:current.value.x,y:current.value.y,z:current.value.z},undo:undoStack.value.length};
+      },
+      state:()=>({x:current.value.x,y:current.value.y,z:current.value.z,
+        undo:undoStack.value.length,redo:redoStack.value.length}),
+      undo:undoEdit,redo:redoEdit
+    };
+  }
   renderer.domElement.addEventListener('click',onSceneClick);
   renderer.domElement.addEventListener('contextmenu',onSceneContextMenu);
   document.addEventListener('pointerdown',onOutsideMenu);
   rebuildScene();syncTransform();resize();sizeObserver=new ResizeObserver(resize);sizeObserver.observe(viewport.value!);
   frameSampleAt=performance.now();raf=requestAnimationFrame(frame);
-  window.addEventListener('keydown',onKey);
+  window.addEventListener('keydown',onKey,true);
   window.addEventListener('beforeunload',persistLocal);
 });
 onUnmounted(()=>{
@@ -1141,8 +1157,10 @@ onUnmounted(()=>{
   document.removeEventListener('focusin',onFieldFocus,true);
   document.removeEventListener('focusout',onFieldBlur,true);
   if(saveTimer)clearTimeout(saveTimer);
-  cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
+  cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey,true);
   window.removeEventListener('beforeunload',persistLocal);
+  if(import.meta.env.MODE==='smoke')
+    delete (window as Window & {__FLUXCUE_SMOKE__?:unknown}).__FLUXCUE_SMOKE__;
   window.removeEventListener('pointerup',finishTransformDrag);
   window.removeEventListener('pointercancel',finishTransformDrag);
   window.removeEventListener('blur',finishTransformDrag);
