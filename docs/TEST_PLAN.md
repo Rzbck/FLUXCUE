@@ -83,3 +83,13 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [x] Unit-tested 3D selection and centroid transforms, spatial FX, pixel/DMX export, parametric layout generation.
 - [ ] Browser at both target resolutions: multi-click, right-click menu, group gizmo, lock/hide, array generator, Wave/Blocks and CSV.
 - [x] PR #17 merged at 8eb486a9. Main CI 38163376238 SUCCESS, public Pages deployment 38163376412 SUCCESS; manually verified interactive Brave gestures still open.
+
+## v0.2 release acceptance — issue #8 / #4
+- [x] CI run 38165937115: full static Vue build/typecheck, pure LED chip/density, scale, persisted project migration, cue layers and existing tests **55/55 PASS**. Latest PR commit and release deployment still to check after docs merge.
+- [ ] Two manual Brave resolutions: 1920x1080 and 1366x768, new black theme, custom scrollbars, group rename, all collapse/expand and inspector folding.
+- [ ] Save several fixtures, edit group, chip/density, color, cue; reload page and confirm exact restoration in same browser; backup JSON import on a fresh profile; storage blocked/quota failure warning; legacy 0.1.0 migration.
+- [ ] Move/rotate/scale via gizmo, Ctrl+Z and redo one full drag including mouseup outside window; multiselection and chip changes undo.
+- [ ] Per-fixture/group tint does not recolor unrelated strips, with active cue layers running.
+- [ ] Run cue A and cue B: A keeps animating under B; speed/fade independent; UPDATE modifies existing cue; AUTO respects HOLD; STOP ALL blackouts view; restart continues previous local simulation.
+- [ ] Stress test 500 fixtures/2,000 pixels each, 12 layers and storage limits; no benchmark claimed until measured.
+- [ ] Actual GitHub Pages deploy source SHA and green main workflow proven after merge; physical fixtures and Oracle not used.

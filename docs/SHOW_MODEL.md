@@ -39,3 +39,8 @@ Implement TypeScript schemas (e.g., Zod/JSON Schema) and reproducible test fixtu
 
 ## Simulator-only geometry/mapping slice (PR #17)
 Original pure scenePixelPosition, virtualPixelRows and createFixtureArray functions project straight LED strips to XYZ meter coordinates and fixture-local virtual patch slots. No Three.js dependency in these pure modules. Actual physical controller patching, global channel collision prevention, validated project schema, and multi-point/spline fixtures remain unimplemented and separate. No real packets generated.
+
+## v0.2 simulator extension (PR #19)
+- Fixture metadata: `chip` family, independent positive `density` LED/m, derived `pixels`, per-fixture `tint`, group/visibility/lock. Legacy imported fixture `pixels` retained when density inferred; future edits calculate count from `length * density`.
+- Cue model extension: `hold` for AUTO, `mode` ADD/REPLACE, `targetIds` (empty = all) and `speed`. Runtime `activeLayers` have independent `started`, speed, fade, targets; limited to 12 in public preview. This is NOT the final immutable versioned show schema nor a physical controller cue engine.
+- Browser-local 0.1.0 persistence includes UI collapse and playback fields under same schema for compatibility; validated before applying. No cloud sync, production restoration or authoritative clock guarantees.

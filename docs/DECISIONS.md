@@ -36,3 +36,9 @@ Use the existing Three.js TransformControls/OrbitControls for original FLUXCUE b
 
 ## D-010 — Multi-selection and world-space preview (2026-10-11)
 Multi-object transforms are pure operations around the centroid of visible/unlocked selected fixtures. Locked or hidden fixtures can remain selected but do not move; editing uses one undo record per drag. Context actions are simulator-only UI, no privileged network calls. 3D waveform samples use actual pixel XYZ positions; never tie the show model to Three.js. Static Pages remains unprivileged/read-only build plus isolated publishing job.
+
+## D-011 — Local working autosave vs authoritative show (2026-10-11)
+Only a versioned, validated project snapshot is saved to browser localStorage for the public static simulator, with a visible storage error state and optional JSON backup. No account sync; do not put site credentials in local saves, and never treat it as a production authoritative show backup. The eventual headless engine must own authoritative clocks, show revisions and physical patch safety.
+
+## D-012 — Concurrent cue layers and hardware fixture presets (2026-10-11)
+Concurrent active cue layers persist until explicit STOP/retrigger or a 12-layer memory bound, composited as ADD (screen blend) or REPLACE. They have independent start time/speed and fixture ID targets. Auto NEXT uses configurable HOLD on browser show clock, not a deterministic server timeline. LED chip family presets are metadata for UI and derived LED count, not actual pixel bus drivers. Numeric meters and density are canonical fixture geometry; imported old count is retained during migration.
