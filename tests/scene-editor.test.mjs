@@ -51,6 +51,6 @@ test('transient empty or invalid number fields cannot corrupt patch or scene tra
   assert.equal(clean.y,1.3);
   assert.equal(clean.z,1000);
   assert.equal(clean.angle,0);
-  assert.equal(clean.group,'STAGE');
+  assert.equal(clean.group,'');
   assert.equal(raw.group,'');
 });

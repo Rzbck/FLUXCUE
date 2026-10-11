@@ -60,3 +60,12 @@ No dates promised until milestones' acceptance tests pass.
 - [x] Code+unit evidence on PR CI 38165937115 (55 PASS): local save and migration, chip density, scene scale, group editing/collapse, black UI, layered cues, UPDATE/AUTO/STOP, pointerup undo.
 - [ ] Latest PR head green, merged main, Pages deploy green and manual Brave regression.
 - [ ] Backlog: validated project model, spline fixtures, complete physical patch engine, remote/cloud persisted projects, actual backend/headless and output protocols.
+
+## PR #20 user-reported editor defects (2026-10-11)
+- [x] Code and tests: universal undo/redo transactions, in-place group strip scaling, user-owned groups and legacy migration, cue edit/GO separation and independent per-fixture cue colour.
+- [ ] Final PR CI, protected merge and Pages deployment; hands-on Brave interaction proof.
+- [ ] Follow-on: more comprehensive graphical history/interaction automation, fixture hierarchy, cue playback compositor editing, spline/GLB and real protocol testing.
+
+## v0.2.1 cue target composition and editable project name (2026-10-11)
+- [x] Cue multi-fixture target lists persist while selecting other fixtures; uncommitted draft autosave, user-named shows, neutral default fixture names; PR CI 38172445001 71 PASS.
+- [ ] Protected PR merge, public Pages deploy and manual Brave regression before closing #8 or #4.

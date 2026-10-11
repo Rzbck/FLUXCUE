@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
@@ -11,30 +11,36 @@ import { createFixtureArray } from './core/layouts.mjs';
 import { fadeFactor, advancePreviewClock } from './core/cue-engine.mjs';
 import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,scaleSelected} from './core/hardware.mjs';
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
-import {cueAppliesTo,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
+import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
+import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
+import {commitHistory,stepHistory} from './core/editor-history.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
-type SceneSnapshot = { fixtures: Fixture[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; effect:Fx; color:string; speed:number; brightness:number };
+type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
-type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number };
-type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number};
+type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
+type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>};
 const fixtures = ref<Fixture[]>([
-  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
-  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'FLOOR',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
+  { id:'s1',name:'LED STRIP / 01',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
+  { id:'s2',name:'LED STRIP / 02',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s3',name:'LED STRIP / 03',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s4',name:'LED STRIP / 04',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
 ]);
 const cues = ref<Cue[]>([
-  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35 },
-  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35 },
-  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35 },
-  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35 }
+  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
+  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35,looks:{} },
+  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
+  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35,looks:{} }
 ]);
 const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
 const contextMenu = ref({visible:false,x:0,y:0});
-const bulkGroup = ref('STAGE');
+const groups=ref<string[]>([]);
+const projectName=ref('UNTITLED PROJECT');
+const newGroupName=ref('');
+const bulkGroup=ref('');
+const draggedFixtureIds=ref<string[]>([]);
 const layoutType = ref<'ROW X'|'ROW Z'|'RING XY'>('ROW X');
 const layoutCount = ref(6);
 const layoutSpacing = ref(0.6);
@@ -49,6 +55,10 @@ const blackout=ref(false);
 const layerBudget=12;
 const selectedTint=ref('#ffffff');
 const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
+const cueDraftColors=ref<Record<string,string>>({});
+const cueTargetIdsDraft=ref<string[]>([]);
+const cuePreview=ref(false);
+const activeCueFixtureColor=computed(()=>cueDraftColors.value[current.value.id]||color.value);
 const runningCueIds=computed(()=>new Set(activeLayers.value.map(l=>l.cueId)));
 let hydrated=false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -63,7 +73,7 @@ const focusedPixelIndex = computed(() => Math.min(Math.max(0,Math.floor(pixelFoc
 const focusedPixel = computed(() => scenePixelPosition(sanitizeFixture(current.value),focusedPixelIndex.value));
 const focusedAddress = computed(() => patch.value.assignments[focusedPixelIndex.value]);
 const current = computed(() => fixtures.value.find(f=>f.id===selectedId.value) ?? fixtures.value[0]);
-const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group?.trim() || 'STAGE'))]);
+const fixtureGroups=computed(()=>['',...groups.value]);
 const toolMode = ref<ToolMode>('translate');
 const positionSnap = ref(0.1);
 const angleSnap = ref(15);
@@ -71,7 +81,8 @@ const showGrid = ref(true);
 const undoStack = ref<SceneSnapshot[]>([]);
 const redoStack = ref<SceneSnapshot[]>([]);
 const activeIndex = ref(1);
-const activeCue = computed(() => cues.value[activeIndex.value] ?? cues.value[0]);
+const editIndex=ref(1);
+const activeCue=computed(()=>cues.value[editIndex.value] ?? cues.value[0]);
 const autoplayCountdown = computed(() => autoPlay.value && Number.isFinite(autoNextTime) ? Math.max(0,autoNextTime-showSeconds.value).toFixed(1)+'s' : 'OFF');
 const running = ref(true);
 const effect = ref<Fx>('rainbow');
@@ -96,6 +107,8 @@ let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRe
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
+let historyBaseline:SceneSnapshot|null=null;
+let replaying=false;
 let dragPivot: {x:number,y:number,z:number} | null = null;
 let dragBaseline: Fixture[] = [];
 const raycaster = new THREE.Raycaster();
@@ -129,17 +142,43 @@ function resize() {
   renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
-  return { fixtures:fixtures.value.map(f=>({...f})),cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds]})),selectedId:selectedId.value,selectedIds:[...selectedIds.value],activeIndex:activeIndex.value,effect:effect.value,color:color.value,speed:speed.value,brightness:brightness.value };
+  return { projectName:projectName.value,fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
+    cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}})),
+    selectedId:selectedId.value,selectedIds:[...selectedIds.value],
+    activeIndex:activeIndex.value,editIndex:editIndex.value,effect:effect.value,
+    color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},
+    cueTargetMode:cueTargetMode.value,cueTargetIdsDraft:[...cueTargetIdsDraft.value] };
 }
 function rememberScene(previous: SceneSnapshot) {
-  if (sameScene(previous,snapshotScene())) return;
-  undoStack.value=[...undoStack.value.slice(-79),previous];
-  redoStack.value=[];
+  const next=snapshotScene();
+  if(sameScene(previous,next)){historyBaseline=next;return;}
+  const baseline=historyBaseline;
+  const before=(baseline && !sameScene(baseline,previous))?baseline:previous;
+  const result=commitHistory(undoStack.value,redoStack.value,before,next,100);
+  undoStack.value=result.undo;redoStack.value=result.redo;
+  historyBaseline=next;
+}
+function recordUntrackedEdits(){
+  if(!hydrated||replaying||transforming||dragStart||editStart)return;
+  const next=snapshotScene();
+  if(!historyBaseline){historyBaseline=next;return;}
+  if(!sameScene(historyBaseline,next))rememberScene(historyBaseline);
 }
 function restoreScene(previous: SceneSnapshot) {
+  projectName.value=previous.projectName;
   fixtures.value=previous.fixtures.map(f=>({...f}));
-  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds]}));
+  groups.value=[...previous.groups];
+  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}}));
+  cueDraftColors.value={...previous.cueDraftColors};
+  cueTargetMode.value=previous.cueTargetMode;
+  cueTargetIdsDraft.value=[...previous.cueTargetIdsDraft];
+  // When undoing an updated cue, running layers must show the restored look too.
+  for(const layer of activeLayers.value){
+    const cue=cues.value.find(c=>c.id===layer.cueId);
+    if(cue){layer.looks={...cue.looks};layer.color=cue.color;layer.effect=cue.effect;layer.speed=cue.speed;}
+  }
   activeIndex.value=Math.max(0,Math.min(previous.activeIndex,cues.value.length-1));
+  editIndex.value=Math.max(0,Math.min(previous.editIndex,cues.value.length-1));
   effect.value=previous.effect;color.value=previous.color;speed.value=previous.speed;brightness.value=previous.brightness;
   selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
   selectedIds.value=previous.selectedIds?.filter(id=>fixtures.value.some(f=>f.id===id)) || [selectedId.value];
@@ -147,24 +186,43 @@ function restoreScene(previous: SceneSnapshot) {
   // Scene undo changes geometry/data only; never stop a running cue.
   syncTransform();
 }
-function undoEdit() {
-  const previous=undoStack.value.pop();
-  if (!previous) return;
-  redoStack.value.push(snapshotScene());
-  restoreScene(previous);
+function undoEdit(){
+  if(dragStart)finishTransformDrag();
+  commitEdit();
+  recordUntrackedEdits();
+  const result=stepHistory(undoStack.value,redoStack.value,snapshotScene(),'undo');
+  if(!result.changed)return;
+  replaying=true;
+  undoStack.value=result.undo;redoStack.value=result.redo;
+  restoreScene(result.current);
+  historyBaseline=snapshotScene();
+  nextTick(()=>{replaying=false;});
 }
-function redoEdit() {
-  const next=redoStack.value.pop();
-  if (!next) return;
-  undoStack.value.push(snapshotScene());
-  restoreScene(next);
+function redoEdit(){
+  if(dragStart)finishTransformDrag();
+  commitEdit();
+  recordUntrackedEdits();
+  const result=stepHistory(undoStack.value,redoStack.value,snapshotScene(),'redo');
+  if(!result.changed)return;
+  replaying=true;
+  undoStack.value=result.undo;redoStack.value=result.redo;
+  restoreScene(result.current);
+  historyBaseline=snapshotScene();
+  nextTick(()=>{replaying=false;});
 }
 function beginEdit() {
   if (!editStart) editStart=snapshotScene();
 }
-function commitEdit() {
-  if (editStart) rememberScene(editStart);
+function commitEdit(){
+  if(editStart)rememberScene(editStart);
   editStart=null;
+}
+function onFieldFocus(event:FocusEvent){
+  if(!(event.target instanceof HTMLElement))return;
+  if(event.target.matches('input,select,textarea'))beginEdit();
+}
+function onFieldBlur(event:FocusEvent){
+  if(event.target instanceof HTMLElement && event.target.matches('input,select,textarea'))commitEdit();
 }
 function normalizeCurrent() {
   const clean=sanitizeFixture(current.value);
@@ -195,32 +253,102 @@ function changeDensity(event:Event){
 }
 function paintSelection(event:Event){
   const c=(event.target as HTMLInputElement).value;
-  if(!/^#[a-f0-9]{6}$/i.test(c))return;
+  if(!/^#[a-f0-9]{6}$/i.test(c)||current.value.locked)return;
   beginEdit();
-  for(const f of selectedFixtures.value)if(!f.locked)f.tint=c;
+  // Editing the active fixture NEVER recolors the rest of the selection.
+  current.value.tint=c;
   selectedTint.value=c;
+}
+function tintSelectedExplicitly(){
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)if(!f.locked)f.tint=current.value.tint;
+  rememberScene(before);
+}
+function paintCueFixtureDraft(event:Event){
+  const value=(event.target as HTMLInputElement).value;
+  if(!/^#[0-9a-f]{6}$/i.test(value))return;
+  beginEdit();
+  cueDraftColors.value={...cueDraftColors.value,[current.value.id]:value};
+  if(cueTargetMode.value==='SELECTION'){
+    cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,current.value.id])];
+  }
+}
+function applyCueColorToSelection(){
+  const before=snapshotScene(),value=activeCueFixtureColor.value;
+  const next={...cueDraftColors.value};
+  for(const f of selectedFixtures.value)next[f.id]=value;
+  cueDraftColors.value=next;
+  if(cueTargetMode.value==='SELECTION')cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,...selectedIds.value])];
+  rememberScene(before);
+}
+function clearCueFixtureOverrides(){
+  const before=snapshotScene();
+  cueDraftColors.value={};
+  rememberScene(before);
 }
 function toggleGroup(name:string){
   collapsedGroups.value=collapsedGroups.value.includes(name)?collapsedGroups.value.filter(x=>x!==name):[...collapsedGroups.value,name];
 }
 function collapseAllGroups(){collapsedGroups.value=[...fixtureGroups.value];}
 function expandAllGroups(){collapsedGroups.value=[];}
+function createGroup(){
+  try{
+    const before=snapshotScene();
+    groups.value=createNamedGroup(groups.value,newGroupName.value);
+    bulkGroup.value=groups.value.at(-1)||'';
+    newGroupName.value='';
+    rememberScene(before);
+  }catch{alert('Give the group a unique name (up to 40 characters).');}
+}
 function startGroupRename(name:string){editingGroup.value=name;groupNameDraft.value=name;}
 function commitGroupRename(){
   const old=editingGroup.value;editingGroup.value=null;
-  const name=groupNameDraft.value.trim().slice(0,40);
-  if(!old||!name||name===old)return;
+  if(!old)return;
+  try{
+    const before=snapshotScene();
+    const updated=renameNamedGroup(groups.value,fixtures.value,old,groupNameDraft.value);
+    fixtures.value=updated.fixtures as Fixture[];
+    groups.value=updated.groups;
+    collapsedGroups.value=collapsedGroups.value.map(x=>x===old?groupNameDraft.value.trim():x);
+    if(bulkGroup.value===old)bulkGroup.value=groupNameDraft.value.trim();
+    rememberScene(before);
+  }catch{alert('Invalid or duplicate group name.');}
+}
+function removeGroup(name:string){
+  if(!confirm('Delete group "'+name+'"? LED fixtures will become UNGROUPED.'))return;
   const before=snapshotScene();
-  for(const f of fixtures.value)if(f.group===old)f.group=name;
-  collapsedGroups.value=collapsedGroups.value.filter(x=>x!==old);
+  const result=removeNamedGroup(groups.value,fixtures.value,name);
+  fixtures.value=result.fixtures as Fixture[];
+  groups.value=result.groups;
+  if(bulkGroup.value===name)bulkGroup.value='';
   rememberScene(before);
+}
+function moveFixturesToGroup(target:string,ids=selectedIds.value){
+  try{
+    const before=snapshotScene();
+    fixtures.value=moveToGroup(fixtures.value,ids,target,groups.value) as Fixture[];
+    bulkGroup.value=target;
+    rememberScene(before);
+  }catch{alert('Create the group first.');}
+}
+function startFixtureDrag(event:DragEvent,id:string){
+  draggedFixtureIds.value=selectedIds.value.includes(id)?[...selectedIds.value]:[id];
+  if(event.dataTransfer){event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain','FLUXCUE_FIXTURES');}
+}
+function dropOnGroup(event:DragEvent,target:string){
+  event.preventDefault();
+  if(!draggedFixtureIds.value.length)return;
+  moveFixturesToGroup(target,draggedFixtureIds.value);
+  draggedFixtureIds.value=[];
 }
 function togglePanel(name:keyof typeof collapsedPanels.value){
   collapsedPanels.value[name]=!collapsedPanels.value[name];
 }
 function serializableProject(){
-  return {fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
+  return {project:{name:projectName.value},fixtures:fixtures.value,groups:groups.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
     autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,collapsedPanels:collapsedPanels.value,
+    editorDraft:{cueIndex:editIndex.value,effect:effect.value,color:color.value,speed:speed.value,
+      targetMode:cueTargetMode.value,targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value},
     activeLayers:activeLayers.value,showTime,running:running.value,blackout:blackout.value};
 }
 function persistLocal(){
@@ -241,10 +369,12 @@ function restoreLocal(){
     const raw=localStorage.getItem(storageKey);
     if(!raw)return;
     const parsed=parseStudioProject(raw);
+    projectName.value=parsed.projectName;
     fixtures.value=parsed.fixtures as Fixture[];
+    groups.value=parsed.groups;
     cues.value=parsed.cues as Cue[];
     selectedId.value=parsed.selectedId;selectedIds.value=parsed.selectedIds;
-    activeIndex.value=parsed.activeIndex;
+    activeIndex.value=parsed.activeIndex;editIndex.value=parsed.editorDraft.cueIndex;
     collapsedGroups.value=parsed.collapsedGroups;
     Object.assign(collapsedPanels.value,parsed.collapsedPanels);
     autoPlay.value=parsed.autoPlay;
@@ -253,8 +383,10 @@ function restoreLocal(){
     showTime=parsed.showTime;showSeconds.value=parsed.showTime;
     running.value=parsed.running;blackout.value=parsed.blackout;
     autoNextTime=autoPlay.value?cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5):Infinity;
-    effect.value=cues.value[activeIndex.value]?.effect||'solid';
-    color.value=cues.value[activeIndex.value]?.color||'#ffffff';
+    effect.value=parsed.editorDraft.effect;color.value=parsed.editorDraft.color;speed.value=parsed.editorDraft.speed;
+    cueDraftColors.value={...parsed.editorDraft.looks};
+    cueTargetMode.value=parsed.editorDraft.targetMode as 'ALL'|'SELECTION';
+    cueTargetIdsDraft.value=[...parsed.editorDraft.targetIds];
     saveState.value='RECOVERED';
   }catch{saveState.value='ERROR'; /* Preserve corrupt local bytes for backup/manual recovery. */ }
 }
@@ -399,7 +531,7 @@ function setView(view: 'ISO'|'FRONT'|'TOP'|'RIGHT') {
   camera.lookAt(target);controls.update();
 }
 function orderedFixtureIds(){
-  return fixtureGroups.value.flatMap(g => fixtures.value.filter(f => (f.group?.trim() || 'STAGE')===g).map(f=>f.id));
+  return fixtureGroups.value.flatMap(g=>fixtures.value.filter(f=>(f.group||'')===g).map(f=>f.id));
 }
 function selectFixture(id:string,toggle=false,range=false) {
   contextMenu.value.visible=false;
@@ -480,12 +612,9 @@ function setSelectedLock(value:boolean) {
   rememberScene(before);contextMenu.value.visible=false;
 }
 function toggleSelectedLock() {setSelectedLock(!current.value.locked);}
-function applyBulkGroup() {
-  const group=bulkGroup.value.trim().slice(0,40);
-  if(!group)return;
-  const before=snapshotScene();
-  for(const f of selectedFixtures.value)if(!f.locked)f.group=group;
-  rememberScene(before);contextMenu.value.visible=false;
+function applyBulkGroup(){
+  moveFixturesToGroup(bulkGroup.value);
+  contextMenu.value.visible=false;
 }
 function alignSelected(axis:'x'|'y'|'z') {
   if(selectedFixtures.value.length<2)return;
@@ -531,17 +660,28 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*cueSpeed*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
+  if(cuePreview.value && (cueTargetMode.value==='ALL'||(cueTargetIdsDraft.value.length?cueTargetIdsDraft.value.includes(f.id):selectedIds.value.includes(f.id)))){
+    // Explicit edit-preview overrides only the chosen cue target fixtures.
+    // It never changes saved cues, other pixels or actual playback layers.
+    return sampleFx(effect.value,cueDraftColors.value[f.id]||color.value,
+      index,count,time,output,f,speed.value);
+  }
   const tint=getTintColor(f);
   // Unpatched base look, used when all cues are stopped.
-  sampleFx(effect.value,'#ffffff',index,count,time,colorB,f);
-  let rgb=activeLayers.value.length ? [0.008,0.008,0.008] : [colorB.r,colorB.g,colorB.b];
+  // With no running cue, show each fixture's independent colour/tint.
+  // The draft cue colour must NOT repaint the entire scene as it is edited.
+  let rgb=activeLayers.value.length ? [0.008,0.008,0.008] : [1,1,1];
   for(const layer of activeLayers.value){
     if(!cueAppliesTo(layer,f.id))continue;
     // The timing of each cue is independent; a later GO never resets prior effects.
-    sampleFx(layer.effect,layer.color,index,count,time-layer.started,colorB,f,layer.speed);
+    sampleFx(layer.effect,cueFixtureColor(layer,f.id),index,count,time-layer.started,colorB,f,layer.speed);
     rgb=composeRgb(rgb,[colorB.r,colorB.g,colorB.b],layerEnvelope(time,layer.started,layer.fade),layer.mode);
   }
-  return output.setRGB(rgb[0]*tint.r,rgb[1]*tint.g,rgb[2]*tint.b);
+  // Fixture tint is an independent default scene colour, not a second colour
+  // multiplier on a saved cue look (which would unexpectedly dim/recolour it).
+  return activeLayers.value.length
+    ?output.setRGB(rgb[0],rgb[1],rgb[2])
+    :output.setRGB(rgb[0]*tint.r,rgb[1]*tint.g,rgb[2]*tint.b);
 }
 function drawPixels(){
   for(const f of fixtures.value){
@@ -567,15 +707,29 @@ function frame(now:number){
   frameCount++;
   if(now-frameSampleAt>1000){fps.value=Math.round(frameCount*1000/(now-frameSampleAt));frameSampleAt=now;frameCount=0;}
 }
+function editCue(index:number){
+  if(index<0||index>=cues.value.length)return;
+  editIndex.value=index;
+  const c=cues.value[index];
+  effect.value=c.effect;color.value=c.color;speed.value=c.speed;
+  cueTargetMode.value=c.targetIds.length?'SELECTION':'ALL';
+  cueDraftColors.value={...c.looks};
+  cueTargetIdsDraft.value=[...c.targetIds];
+  if(c.targetIds.length){
+    const ids=c.targetIds.filter(id=>fixtures.value.some(f=>f.id===id));
+    if(ids.length){selectedIds.value=ids;selectedId.value=ids[0];}
+  }
+}
 function applyCue(index:number){
   if(index<0||index>=cues.value.length)return;
+  cuePreview.value=false;
   const c=cues.value[index];
   blackout.value=false;
   // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
   const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
-    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35};
+    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35,looks:{...c.looks}};
   activeLayers.value=[...activeLayers.value.filter(l=>l.cueId!==c.id).slice(-(layerBudget-1)),layer];
-  effect.value=c.effect;color.value=c.color;speed.value=c.speed;
+  // GO changes only the live cue stack, never the editor's draft palette.
   fadeStarted.value=showTime;fadeSeconds.value=c.fade;
   activeIndex.value=index;showSeconds.value=showTime;
   autoNextTime=cueNextAt(showTime,c.hold||5);
@@ -591,13 +745,34 @@ function toggleAutoPlay(){
     if(!activeLayers.value.length && cues.value.length)applyCue(activeIndex.value);
   }
 }
-function captureCueTargets(){return cueTargetMode.value==='ALL'?[]:[...selectedIds.value];}
+function captureCueTargets(){
+  if(cueTargetMode.value==='ALL')return [];
+  // The explicit list survives selecting the NEXT fixture while composing
+  // a single multi-colour cue, instead of silently targeting only the last one.
+  const ids=cueTargetIdsDraft.value.filter(id=>fixtures.value.some(f=>f.id===id));
+  return ids.length?[...new Set(ids)]:[...selectedIds.value];
+}
+function addSelectedCueTargets(){
+  const before=snapshotScene();
+  cueTargetMode.value='SELECTION';
+  cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,...selectedIds.value])];
+  rememberScene(before);
+}
+function removeSelectedCueTargets(){
+  const before=snapshotScene();
+  const remove=new Set(selectedIds.value);
+  cueTargetIdsDraft.value=cueTargetIdsDraft.value.filter(id=>!remove.has(id));
+  const looks={...cueDraftColors.value};
+  for(const id of remove)delete looks[id];
+  cueDraftColors.value=looks;
+  rememberScene(before);
+}
 function addCue(){
   if(cues.value.length>=3000)return;
   const before=snapshotScene();
   const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
-    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value};
-  cues.value.push(c);activeIndex.value=cues.value.length-1;
+    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value,looks:{...cueDraftColors.value}};
+  cues.value.push(c);editIndex.value=cues.value.length-1;
   rememberScene(before);
 }
 function normalizeCue(){
@@ -611,24 +786,31 @@ function updateCue(){
   const c=activeCue.value;if(!c)return;
   const before=snapshotScene();
   c.effect=effect.value;c.color=color.value;c.speed=speed.value;c.targetIds=captureCueTargets();
+  c.looks={...cueDraftColors.value};
   for(const layer of activeLayers.value)if(layer.cueId===c.id){
     layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;layer.speed=c.speed;
-    layer.targetIds=[...c.targetIds];layer.fade=c.fade;
+    layer.targetIds=[...c.targetIds];layer.fade=c.fade;layer.looks={...c.looks};
   }
   rememberScene(before);
 }
 function moveActiveCue(direction:-1|1){
-  const from=activeIndex.value,to=from+direction;
+  const from=editIndex.value,to=from+direction;
   if(to<0||to>=cues.value.length)return;
   const before=snapshotScene();
+  const playingId=cues.value[activeIndex.value]?.id;
   const [cue]=cues.value.splice(from,1);cues.value.splice(to,0,cue);
-  activeIndex.value=to;rememberScene(before);
+  editIndex.value=to;
+  activeIndex.value=Math.max(0,cues.value.findIndex(c=>c.id===playingId));
+  rememberScene(before);
 }
 function removeActiveCue(){
   if(cues.value.length<=1)return;
-  const before=snapshotScene(),i=activeIndex.value;
+  const before=snapshotScene(),i=editIndex.value;
+  const playingId=cues.value[activeIndex.value]?.id;
   const [removed]=cues.value.splice(i,1);
-  stopCue(removed.id);activeIndex.value=Math.min(i,cues.value.length-1);
+  stopCue(removed.id);
+  editIndex.value=Math.min(i,cues.value.length-1);
+  activeIndex.value=Math.max(0,cues.value.findIndex(c=>c.id===playingId));
   rememberScene(before);
 }
 function resetClock(){
@@ -640,7 +822,7 @@ function addFixture() {
   const before=snapshotScene();
   const i=fixtures.value.length+1;
   const id='s'+crypto.randomUUID();
-  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:current.value.group,visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff'});
+  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff'});
   selectedId.value=id;selectedIds.value=[id];
   rememberScene(before);
 }
@@ -668,16 +850,19 @@ function loadProject(event:Event){
   file.text().then(raw=>{
     const p=parseStudioProject(raw);
     // Atomic replacement only after every fixture and cue passed validation.
+    projectName.value=p.projectName;
     fixtures.value=p.fixtures as Fixture[];
     cues.value=p.cues as Cue[];
     selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
-    activeIndex.value=p.activeIndex;collapsedGroups.value=p.collapsedGroups;
+    activeIndex.value=p.activeIndex;editIndex.value=p.editorDraft.cueIndex;groups.value=p.groups;collapsedGroups.value=p.collapsedGroups;
     Object.assign(collapsedPanels.value,p.collapsedPanels);
     speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
     activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;blackout.value=false;
     undoStack.value=[];redoStack.value=[];editStart=null;
-    effect.value=cues.value[activeIndex.value]?.effect || 'solid';
-    color.value=cues.value[activeIndex.value]?.color || '#ffffff';
+    effect.value=p.editorDraft.effect;color.value=p.editorDraft.color;speed.value=p.editorDraft.speed;
+    cueDraftColors.value={...p.editorDraft.looks};
+    cueTargetMode.value=p.editorDraft.targetMode as 'ALL'|'SELECTION';
+    cueTargetIdsDraft.value=[...p.editorDraft.targetIds];
     scheduleSave();
   }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
 }
@@ -690,11 +875,15 @@ function finishTransformDrag(){
 }
 function onKey(e: KeyboardEvent) {
   const target=e.target as HTMLElement|null;
+  if(e.ctrlKey||e.metaKey) {
+    // Global undo/redo wins even while a colour picker, numeric field or cue
+    // title has keyboard focus. Commit its in-flight transaction first.
+    if(e.code==='KeyZ'){e.preventDefault();e.stopPropagation();e.shiftKey?redoEdit():undoEdit();return;}
+    if(e.code==='KeyY'){e.preventDefault();e.stopPropagation();redoEdit();return;}
+  }
   if (!target || ['INPUT','TEXTAREA','SELECT'].includes(target.tagName)||target.isContentEditable)return;
   if (e.ctrlKey||e.metaKey) {
-    if (e.code==='KeyZ'){e.preventDefault();e.shiftKey?redoEdit():undoEdit();}
-    else if (e.code==='KeyY'){e.preventDefault();redoEdit();}
-    else if (e.code==='KeyS'){e.preventDefault();saveProject();}
+    if (e.code==='KeyS'){e.preventDefault();saveProject();}
     else if (e.code==='KeyA'){e.preventDefault();selectAll();}
     else if (e.code==='KeyD'){e.preventDefault();addDuplicate();}
     return;
@@ -714,7 +903,9 @@ function onKey(e: KeyboardEvent) {
   if (e.code==='Delete'){e.preventDefault();deleteFixture();}
 }
 onMounted(()=>{
-  restoreLocal();hydrated=true;
+  restoreLocal();hydrated=true;historyBaseline=snapshotScene();
+  document.addEventListener('focusin',onFieldFocus,true);
+  document.addEventListener('focusout',onFieldBlur,true);
   scene=new THREE.Scene();scene.background=new THREE.Color('#070707');
   camera=new THREE.PerspectiveCamera(48,1,0.02,1000);camera.position.set(7,4.7,8);
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -771,6 +962,8 @@ onMounted(()=>{
 });
 onUnmounted(()=>{
   persistLocal();
+  document.removeEventListener('focusin',onFieldFocus,true);
+  document.removeEventListener('focusout',onFieldBlur,true);
   if(saveTimer)clearTimeout(saveTimer);
   cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
   window.removeEventListener('beforeunload',persistLocal);
@@ -790,34 +983,48 @@ watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.vi
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
-watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,activeLayers,running,blackout],scheduleSave,{deep:true});
+watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,activeLayers,running,blackout],scheduleSave,{deep:true});
+// Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
+// Flush after the event so one user operation produces one history item.
+watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors],
+  recordUntrackedEdits,{deep:true,flush:'post'});
 </script>
 
 <template>
   <div class="shell">
     <header class="top">
       <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>0.1 ALPHA</small></span></div>
-      <div class="top-center"><span class="project-name">DEMO INSTALLATION</span><span class="separator"></span><span class="muted">SHOW A</span></div>
+      <div class="top-center"><input class="project-name-input" aria-label="Current project name" v-model="projectName" maxlength="80"
+          @focus="beginEdit" @change="commitEdit" /><span class="separator"></span><span class="muted">SHOW A</span></div>
       <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':saveState==='READY'?'LOCAL READY':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
     </header>
     <div class="workspace">
       <aside class="sidebar left">
         <div class="panel-title"><span>SCENE / PATCH</span><span class="mono muted">01</span></div>
         <div class="search"><span>⌕ FIXTURES · {{fixtures.length}}</span><div class="group-actions"><button @click="collapseAllGroups" title="Collapse all groups">COLLAPSE</button><button @click="expandAllGroups" title="Expand all groups">EXPAND</button></div></div>
-        <div class="tree-heading">⌄ &nbsp; DEMO INSTALLATION <span class="site-dot"></span></div>
-        <template v-for="group in fixtureGroups" :key="group">
-          <div class="group-header">
-            <button class="group-toggle" @click="toggleGroup(group)" :aria-expanded="!collapsedGroups.includes(group)" :title="collapsedGroups.includes(group)?'Expand group':'Collapse group'">{{collapsedGroups.includes(group)?'▸':'▾'}} &nbsp; /</button>
-            <input v-if="editingGroup===group" v-model="groupNameDraft" class="group-rename-input" maxlength="40" aria-label="Rename group" @keydown.enter="commitGroupRename" @keydown.esc="editingGroup=null" @blur="commitGroupRename"/>
-            <button v-else class="group-name" @click="selectGroupByName(group)" :title="'Select all strips in '+group">{{group}}</button>
-            <button class="group-rename" title="Rename group" @click="startGroupRename(group)">✎</button>
+        <div class="tree-heading">⌄ &nbsp; {{projectName||'UNTITLED PROJECT'}} <span class="site-dot"></span></div>
+        <div class="group-create">
+          <input v-model="newGroupName" maxlength="40" aria-label="New group name" placeholder="NEW GROUP NAME" @keydown.enter="createGroup"/>
+          <button @click="createGroup" title="Create named empty group">＋ GROUP</button>
+        </div>
+        <template v-for="group in fixtureGroups" :key="group||'UNGROUPED'">
+          <div class="group-header" @dragover.prevent @drop="dropOnGroup($event,group)">
+            <button class="group-toggle" @click="toggleGroup(group)" :aria-expanded="!collapsedGroups.includes(group)">{{collapsedGroups.includes(group)?'▸':'▾'}}</button>
+            <input v-if="group && editingGroup===group" v-model="groupNameDraft" class="group-rename-input" maxlength="40"
+              aria-label="Rename group" @keydown.enter="commitGroupRename" @keydown.esc="editingGroup=null" @blur="commitGroupRename"/>
+            <button v-else class="group-name" @click="selectGroupByName(group)" :title="'Select '+(group||'ungrouped')+' fixtures'">{{group||'UNGROUPED'}}</button>
+            <small class="group-count">{{fixtures.filter(f=>(f.group||'')===group).length}}</small>
+            <button v-if="group" class="group-rename" title="Rename group" @click="startGroupRename(group)">✎</button>
+            <button v-if="group" class="group-delete" title="Delete group, ungroup members" @click="removeGroup(group)">×</button>
           </div>
-          <button v-if="!collapsedGroups.includes(group)" v-for="f in fixtures.filter(item=>(item.group?.trim()||'STAGE')===group)" :key="f.id" class="tree-item"
+          <button v-if="!collapsedGroups.includes(group)"
+            v-for="f in fixtures.filter(item=>(item.group||'')===group)" :key="f.id"
+            class="tree-item" draggable="true" @dragstart="startFixtureDrag($event,f.id)" @dragend="draggedFixtureIds=[]"
             :class="{selected:selectedIds.includes(f.id),primary:selectedId===f.id,hidden:!f.visible}"
             @click="selectFixture(f.id,$event.ctrlKey||$event.metaKey,$event.shiftKey)"
             @contextmenu.prevent="openMenu($event,f.id)">
-            <span class="fixture-mark"></span><span class="fixture-name">{{ f.name }}</span>
-            <small>{{ f.locked?'LOCK · ':'' }}{{ f.visible?'':'HIDE · ' }}{{ f.pixels }}px</small>
+            <span class="fixture-mark"></span><span class="fixture-name">{{f.name}}</span>
+            <small>{{f.locked?'LOCK · ':''}}{{!f.visible?'HIDE · ':''}}{{f.pixels}}px</small>
           </button>
         </template>
         <div class="selection-toolbar"><b>{{ selectionCount }} SELECTED</b>
@@ -845,7 +1052,8 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
       </aside>
       <main class="main">
         <div class="viewport-head">
-          <span>◈ &nbsp; 3D EDITOR <small class="selection-counter"> / {{selectionCount}} SELECTED</small></span>
+          <span>◈ &nbsp; 3D EDITOR <small class="selection-counter"> / {{selectionCount}} SELECTED</small>
+          <small v-if="cuePreview" class="draft-preview-indicator">● CUE DRAFT PREVIEW · NO GO</small></span>
           <div class="viewport-head-actions"><button title="Isometric focus (F)" @click="setView('ISO')">ISO</button><button title="Front (1)" @click="setView('FRONT')">FRONT</button><button title="Top (2)" @click="setView('TOP')">TOP</button><button title="Right (3)" @click="setView('RIGHT')">RIGHT</button></div>
         </div>
         <div class="editor-tools">
@@ -883,13 +1091,18 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
             </div>
             <div class="cue-fade-bar" role="progressbar" :aria-valuenow="Math.round(fadeProgress*100)" aria-valuemin="0" aria-valuemax="100" aria-label="Active cue transition progress"><span :style="{width:(fadeProgress*100)+'%'}"></span></div>
             <div class="cue-list">
-              <div v-for="(c,i) in cues" :key="c.id" class="cue-row" :class="{playing:activeIndex===i,layerOn:runningCueIds.has(c.id)}">
-                <button class="cue-select" @click="applyCue(i)" :title="'GO '+c.name">
-                  <span class="cue-number">{{String(i+1).padStart(2,'0')}}</span><span class="cue-caret">{{runningCueIds.has(c.id)?'●':'·'}}</span>
-                  <span class="cue-name">{{c.name}}</span><span class="cue-effect">{{c.effect.toUpperCase()}}</span>
+              <div v-for="(c,i) in cues" :key="c.id" class="cue-row"
+                :class="{playing:activeIndex===i,layerOn:runningCueIds.has(c.id),cueEditing:editIndex===i}">
+                <button class="cue-select" @click="editCue(i)" :title="'Edit '+c.name+' without playing it'">
+                  <span class="cue-number">{{String(i+1).padStart(2,'0')}}</span>
+                  <span class="cue-caret">{{editIndex===i?'✎':'·'}}</span>
+                  <span class="cue-name">{{c.name}}</span>
+                  <span class="cue-effect">{{c.effect.toUpperCase()}}</span>
                   <span class="cue-fade">{{Number(c.fade).toFixed(1)}}s</span>
-                  <span class="cue-target">{{c.targetIds.length?c.targetIds.length+' LED STRIPS':'ALL'}}</span>
+                  <span class="cue-target">{{c.targetIds.length?c.targetIds.length+' STRIPS':'ALL'}}</span>
+                  <span class="cue-swatch" :style="{backgroundColor:c.color}"></span>
                 </button>
+                <button class="cue-go" @click="applyCue(i)" :title="'GO '+c.name">GO</button>
                 <button v-if="runningCueIds.has(c.id)" class="cue-stop" :title="'Stop only '+c.name" @click="stopCue(c.id)">■</button>
               </div>
             </div>
@@ -903,10 +1116,14 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
               <button class="cue-edit-button danger" :disabled="cues.length<2" @click="removeActiveCue">✕</button>
             </div>
             <div class="cue-actions">
-              <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">SELECTED FIXTURES</option><option value="ALL">ALL FIXTURES</option></select></label>
-              <span class="cue-hint">CUE DRAFT FX + COLOR →</span>
-              <button class="cue-update" @click="updateCue" title="Overwrite selected cue's effect/color/targets, without stopping other running cues">↻ UPDATE CUE</button>
-              <button class="cue-new" @click="addCue">＋ NEW CUE</button>
+              <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">CUSTOM TARGETS</option><option value="ALL">ALL FIXTURES</option></select></label>
+              <span v-if="cueTargetMode==='SELECTION'" class="cue-target-count">{{captureCueTargets().length}} STRIPS</span>
+              <button class="cue-preview-button" @click="addSelectedCueTargets" title="Add current selection to the cue's targets">＋ TARGETS</button>
+              <button class="cue-preview-button" @click="removeSelectedCueTargets" title="Remove selected fixtures from cue's targets and overrides">− TARGETS</button>
+              <span class="cue-hint">BUILD LOOK PER STRIP → UPDATE / NEW</span>
+              <button class="cue-preview-button" :class="{active:cuePreview}" @click="cuePreview=!cuePreview">{{cuePreview?'◉ PREVIEW ON':'◯ PREVIEW DRAFT'}}</button>
+              <button class="cue-update" @click="updateCue" title="Save edited cue without starting or stopping other cues">↻ UPDATE SELECTED CUE</button>
+              <button class="cue-new" @click="addCue">＋ SAVE AS NEW CUE</button>
             </div>
           </div>
         </section>
@@ -925,10 +1142,18 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
           <label><input type="checkbox" :checked="current.visible" @change="toggleSelectedVisibility" /> VISIBLE</label>
           <label><input type="checkbox" :checked="current.locked" @change="toggleSelectedLock" /> LOCK</label>
         </div>
-        <label class="field"><span>Group</span><input class="group-input" v-model="current.group" maxlength="40" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
+        <label class="field"><span>Group</span>
+          <select class="group-input" :value="current.group" @change="moveFixturesToGroup(($event.target as HTMLSelectElement).value,[current.id])">
+            <option value="">UNGROUPED</option><option v-for="group in groups" :key="group" :value="group">{{group}}</option>
+          </select>
+        </label>
         <div class="multi-ops">
-          <label>GROUP SELECTED <input v-model="bulkGroup" maxlength="40" aria-label="Batch group name" /></label>
-          <button @click="applyBulkGroup" :disabled="!editableCount">APPLY</button>
+          <label>MOVE SELECTED TO
+            <select v-model="bulkGroup" aria-label="Move selected fixtures to group">
+              <option value="">UNGROUPED</option><option v-for="g in groups" :key="g" :value="g">{{g}}</option>
+            </select>
+          </label>
+          <button @click="applyBulkGroup" :disabled="selectionCount<1">MOVE</button>
         </div>
         <div class="multi-align"><span>ALIGN TO ACTIVE</span>
           <button :disabled="selectionCount<2" @click="alignSelected('x')">X</button>
@@ -953,8 +1178,28 @@ watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapse
         <button class="section-collapse inspector-section" @click="togglePanel('effects')" :aria-expanded="!collapsedPanels.effects">{{collapsedPanels.effects?'▸':'▾'}} CUE DRAFT / COLOUR</button>
         <template v-if="!collapsedPanels.effects">
         <label class="field"><span>Pattern</span><select v-model="effect"><option value="solid">Solid Color</option><option value="rainbow">Rainbow Flow</option><option value="chase">Chase / Trail</option><option value="gradient">Strip Gradient</option><option value="spatial-wave">World-space Wave</option><option value="spatial-blocks">3D Blocks</option></select></label>
-        <label class="field"><span>Selected LED filter</span><div class="control"><input type="color" :value="current.tint" @input="paintSelection" @change="commitEdit"/><b class="hex mono">{{current.tint.toUpperCase()}}</b></div></label>
-        <label class="field"><span>Cue draft color</span><div class="control"><input v-model="color" type="color"/><b class="hex mono">{{color.toUpperCase()}}</b></div></label>
+        <label class="field"><span>ACTIVE STRIP COLOUR</span>
+          <div class="control"><input type="color" aria-label="Only active LED strip colour" :value="current.tint"
+            @pointerdown="beginEdit" @input="paintSelection" @change="commitEdit"/>
+            <b class="hex mono">{{current.tint.toUpperCase()}}</b>
+          </div>
+        </label>
+        <button class="tint-batch-button" :disabled="selectionCount<2" @click="tintSelectedExplicitly">APPLY ACTIVE COLOUR TO {{selectionCount}} SELECTED STRIPS</button>
+        <div class="panel-note">This picker changes ONLY the active strip. Use the button to apply the same filter to multiple selected strips.</div>
+        <label class="field"><span>CUE DEFAULT COLOUR</span><div class="control">
+          <input v-model="color" aria-label="Default cue color" type="color" @pointerdown="beginEdit" @change="commitEdit"/>
+          <b class="hex mono">{{color.toUpperCase()}}</b>
+        </div></label>
+        <label class="field"><span>CUE LOOK · ACTIVE STRIP</span><div class="control">
+          <input type="color" aria-label="Different color for this fixture in selected cue"
+            :value="activeCueFixtureColor" @pointerdown="beginEdit" @input="paintCueFixtureDraft" @change="commitEdit"/>
+          <b class="hex mono">{{activeCueFixtureColor.toUpperCase()}}</b>
+        </div></label>
+        <div class="cue-look-actions">
+          <button @click="applyCueColorToSelection" :disabled="selectionCount<2">APPLY LOOK TO SELECTED ({{selectionCount}})</button>
+          <button @click="clearCueFixtureOverrides">CLEAR OVERRIDES</button>
+        </div>
+        <div class="panel-note">Each fixture can have a different colour in ONE cue. Select a strip, set its cue colour, then UPDATE SELECTED CUE or SAVE AS NEW CUE.</div>
         <label class="field"><span>Speed</span><div class="control"><input v-model.number="speed" type="range" min="0" max="3" step="0.01"/><span class="value">{{ speed.toFixed(2) }}</span></div></label>
         <label class="field"><span>Brightness</span><div class="control"><input v-model.number="brightness" type="range" min="0" max="1" step="0.01"/><span class="value">{{ Math.round(brightness*100) }}%</span></div></label>
         </template><button class="section-collapse inspector-section" @click="togglePanel('pixel')" :aria-expanded="!collapsedPanels.pixel">{{collapsedPanels.pixel?'▸':'▾'}} PIXEL / VIRTUAL PATCH</button>

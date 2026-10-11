@@ -20,7 +20,7 @@ export function createFixtureArray(source,kind,count,spacing,makeId){
     result.push({...source,id,name:source.name.slice(0,65)+' / '+String(i+1).padStart(2,'0'),
       x:Math.round(x*1e6)/1e6,y:Math.round(y*1e6)/1e6,z:Math.round(z*1e6)/1e6,
       angle:Math.round(angle*1e6)/1e6,
-      group:kind==='RING XY'?'RING':kind==='ROW X'?'ARRAY X':'ARRAY Z',locked:false,visible:true});
+      group:typeof source.group==='string'?source.group:'',locked:false,visible:true});
   }
   return result;
 }

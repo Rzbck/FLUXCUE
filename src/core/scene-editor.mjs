@@ -43,6 +43,6 @@ export function sanitizeFixture(f) {
     y:finite(f.y,0,-1000,1000),
     z:finite(f.z,0,-1000,1000),
     angle:snapAngle(finite(f.angle,0,-360000,360000),0),
-    group:typeof f.group==='string'&&f.group.trim()?f.group.trim().slice(0,40):'STAGE'
+    group:typeof f.group==='string'?f.group.trim().slice(0,40):''
   };
 }

@@ -33,8 +33,8 @@ export function scaleSelected(fixtures,ids,pivot,factor){
   const length=f.length*factor;
   if(length<.1||length>100)throw new RangeError('Scaled strip out of range');
   const density=inferredDensity(f);
-  const nx=pivot.x+(f.x-pivot.x)*factor,ny=pivot.y+(f.y-pivot.y)*factor,nz=pivot.z+(f.z-pivot.z)*factor;
-  if([nx,ny,nz].some(v=>Math.abs(v)>1000))throw new RangeError('Scaled fixture out of bounds');
-  return {...f,x:nx,y:ny,z:nz,length,pixels:pixelCountFor(length,density)};
+  // SCALE is strip LENGTH, not object spacing. Preserve every fixture centre;
+  // moving the group apart is a separate layout/translate operation.
+  return {...f,length,pixels:pixelCountFor(length,density)};
  });
 }

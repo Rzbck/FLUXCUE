@@ -17,3 +17,56 @@ test('valid restored show includes bounded running cue layers and blackout',()=>
  assert.equal(p.showTime,10);assert.equal(p.running,false);assert.equal(p.blackout,true);
  assert.equal(p.collapsedPanels.cues,true);assert.equal(p.activeLayers[0].speed,.7);
 });
+
+test('legacy group migration retains old explicitly named STAGE fixtures',()=>{
+ const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture],cues:[cue]}));
+ assert.deepEqual(p.groups,['STAGE']);assert.equal(p.fixtures[0].group,'STAGE');
+});
+test('empty manually managed groups are preserved, and ungrouped fixtures remain ungrouped',()=>{
+ const data={schemaVersion:'0.1.0',fixtures:[{...fixture,group:''}],cues:[cue],groups:['MY GROUP','EMPTY GROUP']};
+ const p=parseStudioProject(JSON.stringify(data));
+ assert.deepEqual(p.groups,['MY GROUP','EMPTY GROUP']);assert.equal(p.fixtures[0].group,'');
+});
+test('unknown fixture group in explicit model is ungrouped, no auto-created groups',()=>{
+ const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture],cues:[cue],groups:[]}));
+ assert.deepEqual(p.groups,[]);assert.equal(p.fixtures[0].group,'');
+});
+
+test('individual fixture colours are stored per cue and safely restored',()=>{
+ const f2={...fixture,id:'s2'};
+ const cueA={...cue,looks:{s1:'#ff0000',s2:'#0000ff',missing:'#abcdef'}};
+ const p=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:[fixture,f2],cues:[cueA]}));
+ assert.deepEqual(p.cues[0].looks,{s1:'#ff0000',s2:'#0000ff'});
+ assert.equal(p.cues[0].color,'#abcdef');
+});
+
+test('old automatic STAGE/FLOOR demo fixtures migrate to UNGROUPED',()=>{
+ const defaults=[
+  {...fixture,id:'s1',name:'STAGE / TOP',group:'STAGE'},
+  {...fixture,id:'s2',name:'LEFT / VERTICAL',group:'STAGE'},
+  {...fixture,id:'s3',name:'RIGHT / VERTICAL',group:'STAGE'},
+  {...fixture,id:'s4',name:'FLOOR / FRONT',group:'FLOOR'}
+ ];
+ const result=parseStudioProject(JSON.stringify({schemaVersion:'0.1.0',fixtures:defaults,cues:[cue]}));
+ assert.deepEqual(result.groups,[]);
+ assert.ok(result.fixtures.every(f=>f.group===''));
+});
+
+test('uncommitted cue look draft and multiple target fixtures survive autosave',()=>{
+ const second={...fixture,id:'s2'};
+ const s=stringifyStudioProject({fixtures:[fixture,second],cues:[cue],
+  editorDraft:{cueIndex:0,targetMode:'SELECTION',targetIds:['s1','s2'],looks:{s1:'#ff0000',s2:'#0000ff'},
+    effect:'solid',color:'#ffffff',speed:.9}});
+ const p=parseStudioProject(s);
+ assert.deepEqual(p.editorDraft.targetIds,['s1','s2']);
+ assert.equal(p.editorDraft.looks.s1,'#ff0000');
+ assert.equal(p.editorDraft.looks.s2,'#0000ff');
+ assert.equal(p.editorDraft.effect,'solid');
+});
+
+test('editable project title survives a JSON backup without leaking other metadata',()=>{
+ const p=parseStudioProject(stringifyStudioProject({project:{name:'Stage Research'},
+  fixtures:[fixture],cues:[cue],groups:[]}));
+ assert.equal(p.projectName,'Stage Research');
+ assert.equal(p.fixtures[0].id,'s1');
+});
