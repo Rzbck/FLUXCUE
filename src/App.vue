@@ -13,6 +13,7 @@ import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,s
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
 import {cueAppliesTo,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
+import {commitHistory,stepHistory} from './core/editor-history.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
@@ -146,11 +147,11 @@ function snapshotScene(): SceneSnapshot {
 }
 function rememberScene(previous: SceneSnapshot) {
   const next=snapshotScene();
-  if (sameScene(previous,next)) {historyBaseline=next;return;}
-  // Central transaction gate. A drag or color-picker gesture creates ONE undo item.
+  if(sameScene(previous,next)){historyBaseline=next;return;}
   const baseline=historyBaseline;
-  undoStack.value=[...undoStack.value.slice(-99),(baseline && !sameScene(baseline,previous)?baseline:previous)];
-  redoStack.value=[];
+  const before=(baseline && !sameScene(baseline,previous))?baseline:previous;
+  const result=commitHistory(undoStack.value,redoStack.value,before,next,100);
+  undoStack.value=result.undo;redoStack.value=result.redo;
   historyBaseline=next;
 }
 function recordUntrackedEdits(){
@@ -182,11 +183,11 @@ function undoEdit(){
   if(dragStart)finishTransformDrag();
   commitEdit();
   recordUntrackedEdits();
-  const previous=undoStack.value.pop();
-  if(!previous)return;
+  const result=stepHistory(undoStack.value,redoStack.value,snapshotScene(),'undo');
+  if(!result.changed)return;
   replaying=true;
-  redoStack.value.push(snapshotScene());
-  restoreScene(previous);
+  undoStack.value=result.undo;redoStack.value=result.redo;
+  restoreScene(result.current);
   historyBaseline=snapshotScene();
   nextTick(()=>{replaying=false;});
 }
@@ -194,11 +195,11 @@ function redoEdit(){
   if(dragStart)finishTransformDrag();
   commitEdit();
   recordUntrackedEdits();
-  const next=redoStack.value.pop();
-  if(!next)return;
+  const result=stepHistory(undoStack.value,redoStack.value,snapshotScene(),'redo');
+  if(!result.changed)return;
   replaying=true;
-  undoStack.value.push(snapshotScene());
-  restoreScene(next);
+  undoStack.value=result.undo;redoStack.value=result.redo;
+  restoreScene(result.current);
   historyBaseline=snapshotScene();
   nextTick(()=>{replaying=false;});
 }
