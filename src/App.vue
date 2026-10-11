@@ -672,6 +672,7 @@ function loadProject(event:Event){
     cues.value=p.cues as Cue[];
     selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
     activeIndex.value=p.activeIndex;collapsedGroups.value=p.collapsedGroups;
+    Object.assign(collapsedPanels.value,p.collapsedPanels);
     speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
     activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;blackout.value=false;
     undoStack.value=[];redoStack.value=[];editStart=null;
