@@ -9,7 +9,7 @@ export const CHIP_PROFILES=[
  {id:'GENERIC_RGB',label:'Generic addressable RGB',format:'RGB'},
  {id:'GENERIC_RGBW',label:'Generic RGBW',format:'RGBW'}
 ];
-export const DENSITY_PRESETS=[30,60,96,120,144,160,240];
+export const DENSITY_PRESETS=[30,60,72,96,120,140,144,160,240];
 export function pixelCountFor(length,density){
  if(!Number.isFinite(length)||!Number.isFinite(density)||length<=0||length>100||density<1||density>600)throw new RangeError('Invalid strip length/density');
  return Math.max(1,Math.min(2000,Math.round(length*density)));

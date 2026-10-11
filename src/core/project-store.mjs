@@ -28,7 +28,7 @@ export function parseStudioProject(json){
   const targets=Array.isArray(c.targetIds)?c.targetIds.filter(id=>ids.has(id)).slice(0,500):[];
   return {id:c.id,name:c.name.slice(0,100),effect:c.effect,fade:c.fade,color:c.color,
    hold:finite(c.hold,.1,3600)?c.hold:5,mode:c.mode==='REPLACE'?'REPLACE':'ADD',
-   targetIds:[...new Set(targets)]};
+   targetIds:[...new Set(targets)],speed:finite(c.speed,0,3)?c.speed:.35};
  });
  const showTime=finite(d.showTime,0,10_000_000)?d.showTime:0;
  const activeLayers=Array.isArray(d.activeLayers)?d.activeLayers.slice(-12).filter(layer=>
@@ -38,7 +38,7 @@ export function parseStudioProject(json){
    ['ADD','REPLACE'].includes(layer.mode)
  ).map(layer=>({
    id:layer.id.slice(0,80),cueId:layer.cueId,effect:layer.effect,color:layer.color,
-   fade:layer.fade,started:layer.started,mode:layer.mode,
+   fade:layer.fade,started:layer.started,mode:layer.mode,speed:finite(layer.speed,0,3)?layer.speed:.35,
    targetIds:Array.isArray(layer.targetIds)?layer.targetIds.filter(id=>ids.has(id)).slice(0,500):[]
  })):[];
  const selectedId=typeof d.selectedId==='string'&&ids.has(d.selectedId)?d.selectedId:fixtures[0].id;

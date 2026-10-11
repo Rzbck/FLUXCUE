@@ -17,8 +17,8 @@ type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
 type SceneSnapshot = { fixtures: Fixture[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; effect:Fx; color:string; speed:number; brightness:number };
 type ToolMode = 'translate' | 'rotate' | 'scale';
-type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[] };
-type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number};
+type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number };
+type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number};
 const fixtures = ref<Fixture[]>([
   { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
   { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
@@ -26,10 +26,10 @@ const fixtures = ref<Fixture[]>([
   { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'FLOOR',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
 ]);
 const cues = ref<Cue[]>([
-  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[] },
-  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[] },
-  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[] },
-  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[] }
+  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35 },
+  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35 },
+  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35 },
+  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35 }
 ]);
 const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
@@ -144,7 +144,7 @@ function restoreScene(previous: SceneSnapshot) {
   selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
   selectedIds.value=previous.selectedIds?.filter(id=>fixtures.value.some(f=>f.id===id)) || [selectedId.value];
   if(!selectedIds.value.length)selectedIds.value=[selectedId.value];
-  activeLayers.value=[];
+  // Scene undo changes geometry/data only; never stop a running cue.
   syncTransform();
 }
 function undoEdit() {
@@ -211,7 +211,7 @@ function commitGroupRename(){
   const name=groupNameDraft.value.trim().slice(0,40);
   if(!old||!name||name===old)return;
   const before=snapshotScene();
-  for(const f of fixtures.value)if(f.group===old && !f.locked)f.group=name;
+  for(const f of fixtures.value)if(f.group===old)f.group=name;
   collapsedGroups.value=collapsedGroups.value.filter(x=>x!==old);
   rememberScene(before);
 }
@@ -513,21 +513,21 @@ function onOutsideMenu(event:PointerEvent){
   const element=event.target as Element;
   if(contextMenu.value.visible && !element?.closest?.('.scene-context-menu'))contextMenu.value.visible=false;
 }
-function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color, fixture: Fixture) {
+function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color, fixture: Fixture, cueSpeed=cueSpeed) {
   const p = count <= 1 ? 0 : index/(count-1);
   if(mode==='spatial-wave' || mode==='spatial-blocks'){
     // Stable physical XYZ coordinates: moving a fixture changes how a wave crosses it.
     const world=scenePixelPosition(sanitizeFixture(fixture),index);
-    const amount=mode==='spatial-wave'?spatialWave(world,t,speed.value):spatialBlocks(world,t,speed.value);
+    const amount=mode==='spatial-wave'?spatialWave(world,t,cueSpeed):spatialBlocks(world,t,cueSpeed);
     return result.set(hex).multiplyScalar(.06+amount*.94);
   }
   if (mode==='solid') return result.set(hex);
-  if (mode==='rainbow') return result.setHSL((p - t*speed.value*0.22 + 1)%1,0.8,0.58);
+  if (mode==='rainbow') return result.setHSL((p - t*cueSpeed*0.22 + 1)%1,0.8,0.58);
   if (mode==='chase') {
-    const trail = ((p-t*speed.value*0.45)%1+1)%1;
+    const trail = ((p-t*cueSpeed*0.45)%1+1)%1;
     return result.set(hex).multiplyScalar(Math.max(0.025,1-trail*3.6));
   }
-  return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*speed.value*1.5)+1)/2);
+  return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*cueSpeed*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
   const tint=getTintColor(f);
@@ -537,7 +537,7 @@ function sampleCurrentPixel(f: Fixture, index: number, count: number, time: numb
   for(const layer of activeLayers.value){
     if(!cueAppliesTo(layer,f.id))continue;
     // The timing of each cue is independent; a later GO never resets prior effects.
-    sampleFx(layer.effect,layer.color,index,count,time-layer.started,colorB,f);
+    sampleFx(layer.effect,layer.color,index,count,time-layer.started,colorB,f,layer.speed);
     rgb=composeRgb(rgb,[colorB.r,colorB.g,colorB.b],layerEnvelope(time,layer.started,layer.fade),layer.mode);
   }
   return output.setRGB(rgb[0]*tint.r,rgb[1]*tint.g,rgb[2]*tint.b);
@@ -572,9 +572,9 @@ function applyCue(index:number){
   blackout.value=false;
   // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
   const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
-    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade};
+    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35};
   activeLayers.value=[...activeLayers.value.filter(l=>l.cueId!==c.id).slice(-(layerBudget-1)),layer];
-  effect.value=c.effect;color.value=c.color;
+  effect.value=c.effect;color.value=c.color;speed.value=c.speed;
   fadeStarted.value=showTime;fadeSeconds.value=c.fade;
   activeIndex.value=index;showSeconds.value=showTime;
   autoNextTime=cueNextAt(showTime,c.hold||5);
@@ -595,7 +595,7 @@ function addCue(){
   if(cues.value.length>=3000)return;
   const before=snapshotScene();
   const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
-    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets()};
+    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value};
   cues.value.push(c);activeIndex.value=cues.value.length-1;
   rememberScene(before);
 }
@@ -609,9 +609,9 @@ function normalizeCue(){
 function updateCue(){
   const c=activeCue.value;if(!c)return;
   const before=snapshotScene();
-  c.effect=effect.value;c.color=color.value;c.targetIds=captureCueTargets();
+  c.effect=effect.value;c.color=color.value;c.speed=speed.value;c.targetIds=captureCueTargets();
   for(const layer of activeLayers.value)if(layer.cueId===c.id){
-    layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;
+    layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;layer.speed=c.speed;
     layer.targetIds=[...c.targetIds];layer.fade=c.fade;
   }
   rememberScene(before);
