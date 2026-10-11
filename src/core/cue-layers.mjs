@@ -22,3 +22,9 @@ export function cueNextAt(start,hold){
  if(!Number.isFinite(start)||!Number.isFinite(hold)||hold<.1||hold>3600)throw new RangeError('Invalid cue hold');
  return start+hold;
 }
+
+/** Per-cue, per-fixture color lookup: no other fixture inherits an override. */
+export function cueFixtureColor(layer,fixtureId){
+ const custom=layer?.looks?.[fixtureId];
+ return typeof custom==='string'&&/^#[0-9a-f]{6}$/i.test(custom)?custom:layer.color;
+}

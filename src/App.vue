@@ -11,7 +11,7 @@ import { createFixtureArray } from './core/layouts.mjs';
 import { fadeFactor, advancePreviewClock } from './core/cue-engine.mjs';
 import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,scaleSelected} from './core/hardware.mjs';
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
-import {cueAppliesTo,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
+import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
 import {commitHistory,stepHistory} from './core/editor-history.mjs';
 
@@ -660,7 +660,7 @@ function sampleCurrentPixel(f: Fixture, index: number, count: number, time: numb
   for(const layer of activeLayers.value){
     if(!cueAppliesTo(layer,f.id))continue;
     // The timing of each cue is independent; a later GO never resets prior effects.
-    sampleFx(layer.effect,layer.looks[f.id]||layer.color,index,count,time-layer.started,colorB,f,layer.speed);
+    sampleFx(layer.effect,cueFixtureColor(layer,f.id),index,count,time-layer.started,colorB,f,layer.speed);
     rgb=composeRgb(rgb,[colorB.r,colorB.g,colorB.b],layerEnvelope(time,layer.started,layer.fade),layer.mode);
   }
   // Fixture tint is an independent default scene colour, not a second colour

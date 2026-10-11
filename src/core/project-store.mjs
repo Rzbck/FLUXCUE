@@ -48,7 +48,7 @@ export function parseStudioProject(json){
  // New files have explicit, user-owned groups. Old 0.1 projects without this
  // list are migrated once, retaining historical STAGE/FLOOR group assignments.
  const groups=Array.isArray(d.groups)
-  ?d.groups.filter(g=>typeof g==='string'&&g.trim()&&g.trim().length<=40).slice(0,100)
+  ?d.groups.filter(g=>typeof g==='string'&&g.trim()&&g.trim().length<=40&&g.trim().toUpperCase()!=='UNGROUPED').slice(0,100)
   :fixtures.map(f=>f.group).filter(Boolean);
  const distinctGroups=[...new Set(groups)];
  for(const f of fixtures)if(f.group && !distinctGroups.includes(f.group)) f.group='';
