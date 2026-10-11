@@ -23,10 +23,10 @@ type ToolMode = 'translate' | 'rotate' | 'scale';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
 type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>};
 const fixtures = ref<Fixture[]>([
-  { id:'s1',name:'LED STRIP / 01',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
-  { id:'s2',name:'LED STRIP / 02',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s3',name:'LED STRIP / 03',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s4',name:'LED STRIP / 04',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
+  { id:'s1',name:'LED STRIP / 01',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' },
+  { id:'s2',name:'LED STRIP / 02',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' },
+  { id:'s3',name:'LED STRIP / 03',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' },
+  { id:'s4',name:'LED STRIP / 04',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' }
 ]);
 const cues = ref<Cue[]>([
   { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
@@ -67,7 +67,7 @@ let autoNextTime=Infinity;
 let lastClockSaved=0;
 const storageKey='fluxcue.studio.project.v02';
 const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
-let fixtureClipboard:Fixture[]=[];
+const fixtureClipboard=ref<Fixture[]>([]);
 let pasteSerial=0;
 const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
 const selectionCount = computed(() => selectedIds.value.length);
@@ -122,7 +122,13 @@ let sizeObserver: ResizeObserver | undefined, raf = 0, lastFrame = 0, frameSampl
 // A rapid GO/BACK mid-fade then starts from the existing look, not from the previous target.
 let fadeFrom = new Map<string, Float32Array>();
 const strips = new Map<string, THREE.InstancedMesh>();
-let pixelGeometry: THREE.SphereGeometry;
+const rearStrips = new Map<string, THREE.InstancedMesh>();
+const ledBodies = new Map<string, THREE.InstancedMesh>();
+const diffusers = new Map<string, THREE.InstancedMesh>();
+let pixelGeometry: THREE.PlaneGeometry;
+let bodyGeometry: THREE.BoxGeometry;
+let tubeGeometry: THREE.CylinderGeometry;
+let flatGeometry: THREE.BoxGeometry;
 let showTime = 0;
 const dummy = new THREE.Object3D();
 const colorA = new THREE.Color();
@@ -244,6 +250,15 @@ function chooseChip(event:Event){
   for(const f of selectedFixtures.value)if(!f.locked){
     f.chip=chip;f.format=profile.format as Fixture['format'];f.density=inferredDensity(f);
     f.pixels=pixelCountFor(f.length,f.density);
+  }
+  rememberScene(before);
+}
+function changeOptics(event:Event,key:'diffuser'|'emitterMode'|'ledSizeMm'){
+  const node=event.target as HTMLInputElement|HTMLSelectElement;
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)if(!f.locked){
+    const next=optics({...f,[key]:key==='ledSizeMm'?Number(node.value):node.value});
+    Object.assign(f,next);
   }
   rememberScene(before);
 }
@@ -581,15 +596,15 @@ function generateLayout(){
   }catch(error){alert('Layout generation failed: '+String(error));}
 }
 function copySelected(){
-  fixtureClipboard=selectedFixtures.value.map(f=>({...f}));
+  fixtureClipboard.value=selectedFixtures.value.map(f=>({...f}));
   pasteSerial=0;contextMenu.value.visible=false;
 }
 function pasteSelected(){
-  if(!fixtureClipboard.length || fixtures.value.length>=500)return;
+  if(!fixtureClipboard.value.length || fixtures.value.length>=500)return;
   pasteSerial+=1;
   const remaining=500-fixtures.value.length;
   const before=snapshotScene();
-  const copies=copyFixtures(fixtureClipboard,fixtureClipboard.map(f=>f.id),
+  const copies=copyFixtures(fixtureClipboard.value,fixtureClipboard.value.map(f=>f.id),
     ()=>'s'+crypto.randomUUID(),Math.min(5,(positionSnap.value||0.1)*pasteSerial),remaining) as Fixture[];
   if(!copies.length)return;
   fixtures.value.push(...copies);selectedIds.value=copies.map(f=>f.id);
@@ -843,7 +858,7 @@ function addFixture() {
   const before=snapshotScene();
   const i=fixtures.value.length+1;
   const id='s'+crypto.randomUUID();
-  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff'});
+  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none'});
   selectedId.value=id;selectedIds.value=[id];
   rememberScene(before);
 }
@@ -943,7 +958,12 @@ onMounted(()=>{
   scene.add(new THREE.AxesHelper(0.65));
   const bounds=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-3,0,-2),new THREE.Vector3(3,3.1,2)),'#383838');
   scene.add(bounds);
-  pixelGeometry=new THREE.SphereGeometry(0.038,7,5);
+  // 3.8mm luminous SMD surface; the black body is a separate 5mm package.
+  // Planes emit only toward their front normal, never 360 degrees by default.
+  pixelGeometry=new THREE.PlaneGeometry(1,1);
+  bodyGeometry=new THREE.BoxGeometry(1,1,1);
+  tubeGeometry=new THREE.CylinderGeometry(1,1,1,8,1);
+  flatGeometry=new THREE.BoxGeometry(1,1,1);
   transformProxy=new THREE.Object3D();scene.add(transformProxy);
   transform=new TransformControls(camera,renderer.domElement);
   scene.add(transform.getHelper());
@@ -1005,9 +1025,11 @@ onUnmounted(()=>{
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
   if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
   if (scene)disposeStrips();
-  pixelGeometry?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
+  pixelGeometry?.dispose();bodyGeometry?.dispose();tubeGeometry?.dispose();flatGeometry?.dispose();
+  controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
-watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.visible,f.locked].join(':')).join('|'),()=>{rebuildScene();syncTransform();});
+watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.visible,f.locked,
+  f.emitterMode,f.diffuser,f.ledSizeMm].join(':')).join('|'),()=>{rebuildScene();syncTransform();});
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
@@ -1100,7 +1122,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
           <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
           <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
           <button title="Copy selected LED strips (Ctrl+C)" @click="copySelected">⧉ COPY <kbd>Ctrl+C</kbd></button>
-          <button title="Paste copied strips (Ctrl+V)" :disabled="!fixtureClipboard.length" @click="pasteSelected">▣ PASTE <kbd>Ctrl+V</kbd></button>
+          <button title="Paste copied strips (Ctrl+V)" :disabled="!fixtureClipboard.value.length" @click="pasteSelected">▣ PASTE <kbd>Ctrl+V</kbd></button>
         </div>
         <div class="viewport" ref="viewport">
           <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CTRL/SHIFT + CLICK MULTI SELECT · RIGHT CLICK MENU · DRAG GROUP GIZMO</span></div>
@@ -1198,6 +1220,23 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
             <input :value="current.density" class="num" aria-label="Custom LEDs per meter" type="number" min="1" max="600" step="1" :disabled="current.locked" @change="changeDensity"/>
           </div></label>
         <label class="field"><span>Pixels total</span><b class="value mono">{{current.pixels}} px</b></label>
+        <div class="section-label">SMD / LIGHT OPTICS · SIMULATED</div>
+        <label class="field"><span>SMD package</span>
+          <select :value="current.ledSizeMm" :disabled="current.locked" @change="changeOptics($event,'ledSizeMm')">
+            <option :value="3.5">3.5 mm</option><option :value="5">5 mm (5050)</option><option :value="8">8 mm</option>
+          </select>
+        </label>
+        <label class="field"><span>Emitters</span>
+          <select :value="current.emitterMode" :disabled="current.locked" @change="changeOptics($event,'emitterMode')">
+            <option v-for="mode in EMITTERS" :key="mode.id" :value="mode.id">{{mode.label}}</option>
+          </select>
+        </label>
+        <label class="field"><span>Diffuser</span>
+          <select :value="current.diffuser" :disabled="current.locked" @change="changeOptics($event,'diffuser')">
+            <option v-for="mode in DIFFUSERS" :key="mode.id" :value="mode.id">{{mode.label}}</option>
+          </select>
+        </label>
+        <div class="panel-note">ONE face: light toward +Z only. TWO faces: opposed +Z/-Z. Opal tube previews wide-angle light (not calibrated 360° photometry).</div>
         <label class="field"><span>LED chip</span><select :value="current.chip" :disabled="current.locked" @change="chooseChip"><option v-for="profile in CHIP_PROFILES" :key="profile.id" :value="profile.id">{{profile.label}}</option></select></label>
         <label class="field"><span>Pixel channels</span><b class="value">{{current.format}}</b></label>
         <label class="field"><span>Position Y</span><input v-model.number="current.y" type="number" step="0.01" class="number-wide" :disabled="current.locked" @focus="beginEdit" @change="normalizeCurrent" @blur="commitEdit"/></label>
@@ -1256,7 +1295,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
       <button @click="toolMode='translate';contextMenu.visible=false">MOVE <kbd>M</kbd></button>
       <button @click="toolMode='rotate';contextMenu.visible=false">ROTATE <kbd>R</kbd></button>
       <button @click="copySelected">COPY <kbd>Ctrl+C</kbd></button>
-      <button @click="pasteSelected" :disabled="!fixtureClipboard.length">PASTE <kbd>Ctrl+V</kbd></button>
+      <button @click="pasteSelected" :disabled="!fixtureClipboard.value.length">PASTE <kbd>Ctrl+V</kbd></button>
       <button @click="addDuplicate">DUPLICATE <kbd>Ctrl+D</kbd></button>
       <button @click="setSelectedVisibility(false)">HIDE</button>
       <button @click="setSelectedVisibility(true)">SHOW</button>
