@@ -1141,6 +1141,22 @@ onMounted(()=>{
       },
       state:()=>({x:current.value.x,y:current.value.y,z:current.value.z,
         undo:undoStack.value.length,redo:redoStack.value.length}),
+      pointerCandidates:()=>{
+        scene.updateMatrixWorld(true);
+        const picker=(transform as unknown as {_gizmo?:{picker?:{translate?:THREE.Group}}})._gizmo?.picker?.translate;
+        const rect=renderer.domElement.getBoundingClientRect();
+        const candidates:{name:string;x:number;y:number;geometry:string}[]=[];
+        picker?.traverse(o=>{
+          const mesh=o as THREE.Mesh;
+          if(o.name!=='X'||!mesh.geometry)return;
+          mesh.geometry.computeBoundingSphere();
+          const center=mesh.geometry.boundingSphere?.center.clone()||new THREE.Vector3();
+          center.applyMatrix4(mesh.matrixWorld).project(camera);
+          candidates.push({name:o.name,x:Math.round(rect.left+(center.x+1)*rect.width/2),
+            y:Math.round(rect.top+(1-center.y)*rect.height/2),geometry:mesh.geometry.type});
+        });
+        return {candidates,canvas:{left:rect.left,top:rect.top,width:rect.width,height:rect.height}};
+      },
       undo:undoEdit,redo:redoEdit
     };
   }
