@@ -65,3 +65,12 @@ The preview is compiled with `--mode pages` to use the `/FLUXCUE/` asset base. T
 
 ## Studio CAD tools — 2026-10-11
 This public browser preview has been extended with native Three.js XYZ translation and Z rotation gizmos, fine centimeter snapping and a dynamic visual grid, camera presets, direct LED line picking, grouped fixtures, show/hide/lock/duplicate/delete, and bounded scene edit undo/redo. The left and right panels preserve exact numeric values while the main view supports mouse editing. Build/unit checks have passed in PR #16, but actual drag interactions in Brave remain to be verified. This changes **only** the SIMULATOR; no live hardware or VPS link is implemented.
+
+## Multiselect and spatial pixel map workflow (PR #17)
+- Ctrl/Cmd-click toggles a fixture; Shift-click selects an outliner range; Ctrl+A selects all. Right-click a fixture in the outliner or 3D viewport to open the selection and editing menu.
+- Drag the selected visible/unlocked objects together using the XYZ move gizmo or Z-axis rotation around their centroid. Locked/hidden objects are retained in selection but not transformed. The inspector adds batch group assignment and align X/Y/Z.
+- New procedural world-space effect modes Wave and 3D Blocks use calculated XYZ meter positions rather than strip-local indices. Existing cue/fade effects continue to work.
+- Pixel inspector: 0-based LED index, XYZ, fixture-local virtual universe offset and DMX slot; Pixel Map CSV downloads world-space positions and virtual slots for at most 100,000 pixels. No controller/network patch is implied.
+- Scene array generator: ROW X, ROW Z or RING XY, 2-32 independent strips, metric spacing, with generated fixtures selected together.
+- Prior 0.1.0 show JSON remains supported; only the scene/project data is saved, not transient selection/camera/menu state.
+- Public Pages preview is still a static SIMULATOR. Visual/interactive Brave checks and final Pages deployment are required before claiming runtime verification.

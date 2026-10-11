@@ -33,3 +33,6 @@ GitHub Actions run **only** in public FLUXCUE; private FLUXCUE-Deploy has no Act
 
 ## D-009 — 3D editor controls, spatial transforms and undo (2026-10-11)
 Use the existing Three.js TransformControls/OrbitControls for original FLUXCUE browser-only direct manipulation; world Y stays UP, floor grid XZ, strip orientation rotates around Z in the XY plane. Keep x/y/z/angle numeric transforms as canonical serializable fixture values; scene model remains independent of WebGL and future protocol adapter. Translation snap in meters and rotation in degrees, with explicit FREE mode and performance-capped visual grid. Capture scene snapshots on committed operations, not every drag frame. Preserve export schema v0.1.0 with optional editor fields. A later model version must formalize groups and patch IDs without silent data loss.
+
+## D-010 — Multi-selection and world-space preview (2026-10-11)
+Multi-object transforms are pure operations around the centroid of visible/unlocked selected fixtures. Locked or hidden fixtures can remain selected but do not move; editing uses one undo record per drag. Context actions are simulator-only UI, no privileged network calls. 3D waveform samples use actual pixel XYZ positions; never tie the show model to Three.js. Static Pages remains unprivileged/read-only build plus isolated publishing job.

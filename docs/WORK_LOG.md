@@ -83,3 +83,18 @@
 - First run 38161512013 FAILED 1 of 27 tests on duplicate-grid rounding; later corrected. Recent source also fixes OrbitControls moving during gizmo drag, clamps transient invalid numeric input, keeps empty group labels visible, and adds a local 1cm precision grid over a coarse floor grid.
 - Testing scope: pure helper tests, TypeScript typecheck, static builds/security and Pages paths. **No actual browser interaction automation or manual drag proof yet.** GitHub Pages deploy is pending merge.
 - No Oracle/VPS/SSH/Tailscale/controller contact and no new dependencies.
+
+## 2026-10-11 — Multi-select, context UI, group tools and spatial simulation (PR PENDING)
+- GitHub main starting SHA `d95814c1f363611c0d4ea724d84327020e52773f`, green public CI and Pages, user explicitly requests much larger batches than single features.
+- Multi-selection in outliner + raycast viewport: Ctrl/Cmd toggle, Shift range, Ctrl+A all, group/inverse select; single primary inspector, highlighted all selected, group gizmo translate XYZ / rotate Z about shared centroid, locked/hidden excluded from transform. Pure selection/transform helpers and unit tests.
+- Context menu on right-click of viewport or fixture: select all/group/invert, MOVE, ROTATE, DUPLICATE, SHOW/HIDE, LOCK/UNLOCK, DELETE. Batch group assignment and align X/Y/Z; history single snapshot per operation and gizmo drag. Multiselect export stays legacy 0.1.0 schema (editor selectedIds intentionally transient).
+- Two world-space preview effects `World-space Wave` / `3D Blocks` use physical positions for samples; original four effects unchanged. Import recognizes new cue types and rejects duplicate fixture IDs. No external libraries added.
+- **NOT yet verified**: typecheck and tests (CI required), browser context pointer targeting, real gizmo group rotation, viewport performance/responsive usability. NO Art-Net, sACN, Oracle, VPN, server or network hardware code.
+- Next: PR green CI; merge only if green; Pages release then interactive Brave manual check. Continue issue #4 portable validated model and #8 editor; research #1/#2 and license #6 separately.
+
+### PR #17 feature-batch CI proof (2026-10-11)
+- Public PR #17 head ff5129e7a717db8e7ff469938ad9afd5f734ca28 [CI 38163184921](https://github.com/Rzbck/FLUXCUE/actions/runs/38163184921) **SUCCESS**: TypeScript check/Vite default and Pages builds, **42/42 tests PASS**, scanner **49 tracked public files PASS**, each static distribution scan **6 files PASS**, Pages URL check PASS.
+- Earlier attempt 38162905219 FAILED on TypeScript; the errors were corrected, with green PR CI at 38162969160, 38163078939 and 38163184921. No user browser interaction tested by those jobs.
+- Batch contents: Ctrl/Cmd/Shift multi-selection in outliner and 3D, right-click menu, group XYZ translate/Z rotation around common centroid, duplicate/lock/show/hide/delete and group/align operations, world-space wave and blocks preview FX, virtual pixel XYZ inspector + per-fixture DMX slot/CSV, row and XY-ring parametric LED layout generation.
+- Export CSV capped at 100,000 pixels and does not represent a real physical controller patch. The current prototype JSON import rejects duplicate fixture IDs. Output remains SIMULATOR with no Oracle, SSH, VPN, server or hardware connection.
+- Pending: final protected merge, public Pages build/deploy and real Brave smoke on 1920x1080 and 1366x768 (mouse/gizmos/context menu/CSV).

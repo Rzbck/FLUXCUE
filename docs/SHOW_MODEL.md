@@ -36,3 +36,6 @@ RGB 170 pixels use 510 DMX slots. A 171st pixel MUST move to a different univers
 
 ## Next validation
 Implement TypeScript schemas (e.g., Zod/JSON Schema) and reproducible test fixtures including zero, 170, 171, 128 RGBW, and conflicting controllers.
+
+## Simulator-only geometry/mapping slice (PR #17)
+Original pure scenePixelPosition, virtualPixelRows and createFixtureArray functions project straight LED strips to XYZ meter coordinates and fixture-local virtual patch slots. No Three.js dependency in these pure modules. Actual physical controller patching, global channel collision prevention, validated project schema, and multi-point/spline fixtures remain unimplemented and separate. No real packets generated.
