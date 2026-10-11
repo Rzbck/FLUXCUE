@@ -167,7 +167,7 @@ function chooseChip(event:Event){
   const profile=CHIP_PROFILES.find(p=>p.id===chip);if(!profile)return;
   const before=snapshotScene();
   for(const f of selectedFixtures.value)if(!f.locked){
-    f.chip=chip;f.format=profile.format;f.density=inferredDensity(f);
+    f.chip=chip;f.format=profile.format as Fixture['format'];f.density=inferredDensity(f);
     f.pixels=pixelCountFor(f.length,f.density);
   }
   rememberScene(before);
@@ -318,7 +318,7 @@ function syncTransform() {
   transform.showX=toolMode.value==='translate'||toolMode.value==='scale';
   transform.showY=toolMode.value==='translate';
   transform.showZ=toolMode.value==='translate'||toolMode.value==='rotate';
-  transform.showXYZ=toolMode.value==='scale';
+  // Scale along the red X handle; the group-length scale is applied uniformly.
 }
 function updateTransformOptions() {
   if (!transform) return;
