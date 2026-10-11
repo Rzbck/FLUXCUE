@@ -54,3 +54,13 @@ Professional compact dark browser Studio to create and preview LED strips, spati
 
 Suggested new-conversation first message:
 "Reprends https://github.com/Rzbck/FLUXCUE : lis AGENTS.md, docs/HANDOFF.md, docs/PROJECT_STATE.md, docs/DECISIONS.md et l'audit, récupère main/CI/issues, puis reprends issue #3 (ou la première non terminée). Mets à jour le handoff à la fin."
+
+## Verified release-security merge (2026-10-11)
+- PR #10 merged/squashed onto public `main`: `8c0f954d70fbdbde477e03fbc45e08f6e0facf3c` (historical merge SHA).
+- Actual public push CI run https://github.com/Rzbck/FLUXCUE/actions/runs/38150231964: **SUCCESS**; PR security run 38150116525 was **SUCCESS** with npm ci, build, 12/12 tests, public-source scan and 3-file static distributable scan.
+- Final lockfile and pinned-commit Actions now on `main`. Bootstrap PR job with repository write token removed from final workflow.
+- Manual release workflow `.github/workflows/release.yml` exists but **NOT DISPATCHED / NOT PUBLISHED**. No actual GitHub Release, digest asset, Oracle access or VPS deployment has been verified.
+- GitHub repo rulesets API returned **zero configured rulesets**. Classic branch-protection API 403 with current connector; cannot assert branch is protected. Owner must review GitHub Settings > Rules for required CI/reviews and restrict workflow edits.
+- Manual release target: GitHub Actions > "FLUXCUE Studio Release (manual)" on `main`, input `v0.1.0-alpha.0`, only after the exact current `main` commit passes public CI. This job requires explicit owner action; ChatGPT GitHub connector has no workflow_dispatch action exposed.
+- No private host IDs, tokens or client details written into public source. Dedicated scanner is limited and not a historical credential audit.
+- Next single goal: confirm branch protections and perform manual alpha-release dispatch; verify real release artifact digest and source CI, then update handoffs (public/private).

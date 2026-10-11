@@ -20,3 +20,6 @@ Public GitHub receives only original Studio source, lockfile, tests, CI, static 
 
 ## Known limits
 This is a basic credential/pattern scan, not a full secret-history, malware or dependency security audit. Third-party dependency updates and upstream Actions SHA pins require review. Production SLSA provenance/signing, branch protections, review requirements, artifact attestations and independent client smoke tests remain future upgrades, not claimed.
+
+## Repository settings verification gap (2026-10-11)
+The connected GitHub API returned **no repository rulesets**. The classic branch-protection endpoint returned HTTP 403 (integration permission), so this audit **cannot confirm branch protection**. Owner should enable required `FLUXCUE Studio CI / studio` checks, PR reviews for workflow or release file changes, and restrict direct writes to `main`. Do not treat the manual actor guard as equivalent to protected branches.

@@ -28,3 +28,9 @@ No claims of Art-Net traffic, site connectivity, Oracle deployment, live hardwar
 - Bootstrap PR CI 38149724535: lockfile generation, locked install, build/typecheck, patch tests 6/6 PASS. New security tests/release job require their own PR CI proof.
 - PUBLIC release assets: NONE at start of change. No VPS, Tailscale, SSH or external IPs used.
 - `docs/RELEASE_SECURITY.md` records hard boundary, validations and incomplete hardening work.
+
+## Verified after public merge (2026-10-11)
+- Public `main` at merge SHA `8c0f954d70fbdbde477e03fbc45e08f6e0facf3c` passed public push CI 38150231964; PR final CI 38150116525 passed **12/12 tests** and security scans.
+- Manual GitHub release workflow is committed to `main`, but no manual workflow dispatch, tagged release asset or digest validation has occurred. Release=DESIGN/READY-TO-DISPATCH, not PUBLISHED.
+- Rulesets list empty; classic branch protection inaccessible with connector (403). Strong repository policy enforcement requires owner-side confirmation.
+- No Oracle/Tailscale/SSH access, deployment or real lighting output.

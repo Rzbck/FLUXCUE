@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   build:
-    # Source and release intent are controlled on the protected default branch.
+    # Only main can dispatch a release; branch-protection settings need independent verification.
     if: github.repository == 'Rzbck/FLUXCUE' && github.ref == 'refs/heads/main' && github.actor == 'Rzbck'
     runs-on: ubuntu-24.04
     timeout-minutes: 15

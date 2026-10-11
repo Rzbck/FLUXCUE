@@ -15,3 +15,6 @@
 - Opened PR #10 on branch `security/reproducible-alpha-release`. Bootstrap workflow run 38149724535 PASS: npm generated lockfile, `npm ci --ignore-scripts` PASS, build PASS, unit 6/6 PASS; only a one-time isolated writer committed `package-lock.json` to the branch.
 - Replaced bootstrap workflow with final read-only CI and manual two-job release with exact source+CI verification, SHA256 manifest and no VPS credentials. Added scanned public-repo/distro safety checks and regression tests.
 - **Final CI and publishing are not marked PASS until verified from GitHub.** No production SSH, no live output, no browser smoke.
+
+- PR #10 merged to `main` (`8c0f954d70fbdbde477e03fbc45e08f6e0facf3c`). Public push CI 38150231964 SUCCESS. PR CI 38150116525 PASS: 12/12 tests, 36 tracked public files and 3 static dist files scanned. No release published yet; manual workflow not executed.
+- Repo rulesets collection returned no rulesets; branch-protection endpoint was forbidden to connector. Do not claim protected `main`.
