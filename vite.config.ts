@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // Only the public Pages preview needs the project sub-path.
+  // Local dev and versioned static release archives retain their root base.
+  base: mode === 'pages' ? '/FLUXCUE/' : '/',
   plugins: [vue()],
   server: { host: '127.0.0.1' },
   build: {
@@ -17,4 +20,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

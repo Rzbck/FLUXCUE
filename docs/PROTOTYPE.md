@@ -31,3 +31,8 @@ Build: `npm run build`. Pure patch tests: `npm test`.
 
 ## Next step
 Verify `npm install && npm run build && npm test`; inspect 3D UI at 1920x1080 and 1366x768, file an issue for any errors, then build validated schema and persistent API.
+
+## Public GitHub Pages preview
+To test the browser Studio without installing Node or cloning a repository on your PC, enable **Settings → Pages → Build and deployment → Source: GitHub Actions** for this PUBLIC repository. Once `.github/workflows/pages.yml` has completed successfully on main, visit **https://rzbck.github.io/FLUXCUE/**. This runs a **software-only public SIMULATOR**, not a lighting controller. Never enter live credentials, customer config, private networking information or passwords in its import panel.
+
+The preview is compiled with `--mode pages` to use the `/FLUXCUE/` asset base. The release archives remain built for root-path hosting. Public Pages require no VPS or local installation. Use Brave DevTools (F12) to report JavaScript errors; check orbit, GO/BACK, fixtures, colors, JSON export/import at 1920×1080 and 1366×768. Do not call the page browser-verified until tested.

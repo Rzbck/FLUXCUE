@@ -32,3 +32,9 @@ jobs:
         run: npm test
       - name: Reject unsafe static output
         run: node scripts/check-public-security.mjs --dist
+      - name: Build and verify GitHub Pages base path
+        run: |
+          set -euo pipefail
+          npm run build -- --mode pages
+          node scripts/check-public-security.mjs --dist
+          node scripts/check-pages-output.mjs

@@ -47,3 +47,10 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [x] GitHub Node20 deprecation warning absent from PR CI after SHA-pinned Node24 action upgrade.
 - [ ] New RELEASE job using Node24 upload/download Actions end-to-end: **NOT RUN**. Existing release v0.1.0-alpha.0 remains unchanged.
 - [ ] Third-party `punycode` deprecation in console: present, not root cause of the two noted warnings. Browser runtime/smoke still NOT RUN.
+
+## GitHub Pages smoke preview (2026-10-11)
+- [x] Pages PR CI run 38155300548: regular build and `--mode pages` PASS, 16/16 tests, public source/dist scans PASS, `PAGES PASS` for `/FLUXCUE/`.
+- [ ] GitHub Pages source is configured to `GitHub Actions` by the repository owner.
+- [ ] Public Pages deploy workflow succeeds after merge on protected `main`.
+- [ ] Verify real `https://rzbck.github.io/FLUXCUE/` loads static assets and the Three.js view in Brave (1920×1080 and 1366×768); test GO/BACK, changes and JSON import/export.
+- [ ] No Oracle, SSH, Tailscale, live Art-Net/sACN access used by Pages.
