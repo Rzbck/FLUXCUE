@@ -70,3 +70,14 @@ test('editable project title survives a JSON backup without leaking other metada
  assert.equal(p.projectName,'Stage Research');
  assert.equal(p.fixtures[0].id,'s1');
 });
+
+test('diffuser and directional emitter configuration survive project backup',()=>{
+ const f={...fixture,diffuser:'tube',emitterMode:'dual',ledSizeMm:3.5};
+ const result=parseStudioProject(stringifyStudioProject({fixtures:[f],cues:[cue],groups:[]}));
+ assert.equal(result.fixtures[0].diffuser,'tube');
+ assert.equal(result.fixtures[0].emitterMode,'dual');
+ assert.equal(result.fixtures[0].ledSizeMm,3.5);
+ const legacy=parseStudioProject(stringifyStudioProject({fixtures:[fixture],cues:[cue]}));
+ assert.equal(legacy.fixtures[0].ledSizeMm,5);
+ assert.equal(legacy.fixtures[0].emitterMode,'front');
+});
