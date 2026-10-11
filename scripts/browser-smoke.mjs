@@ -36,6 +36,7 @@ try{
  chrome=spawn(candidate,['--headless=new','--no-sandbox','--disable-dev-shm-usage',
    '--disable-background-networking','--enable-unsafe-swiftshader',
    '--use-gl=angle','--use-angle=swiftshader','--remote-allow-origins=*',
+   '--window-size=1366,768','--force-device-scale-factor=1',
    '--remote-debugging-port=9227','--user-data-dir='+profile,
    'http://127.0.0.1:'+port+base],{stdio:'ignore'});
  const devtools='http://127.0.0.1:9227/json';
