@@ -27,3 +27,6 @@ Private VPN and restricted site routes only; the system should not trust arbitra
 - OLA daemon or native protocol sender.
 - Exact per-pixel effect signature and cue overlap semantics.
 - Audio features clock and mapping video format.
+
+## D-008 — Public-only build/release, manual private operations (accepted 2026-10-11)
+GitHub Actions run **only** in public FLUXCUE; private FLUXCUE-Deploy has no Actions. The public release pipeline builds the static SIMULATOR Studio only, with zero host/network secrets. Private operations are separately approved following a read-only Oracle audit. No public CI job may access VPS, Tailscale, SSH or real LED output. Use locked npm dependencies, read-only test credentials and a separate short-lived release-publisher job. See `docs/RELEASE_SECURITY.md`.

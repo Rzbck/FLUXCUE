@@ -22,3 +22,9 @@
 4. Design validated project schema independent of browser.
 
 No claims of Art-Net traffic, site connectivity, Oracle deployment, live hardware FPS or cloud reliability have been tested yet.
+
+## Release hardening status — 2026-10-11
+- GitHub public PR #10 prepares lockfile (`npm ci --ignore-scripts`), read-only CI, static-output scanning and manual-release workflow. This is **PROPOSED**, not production.
+- Bootstrap PR CI 38149724535: lockfile generation, locked install, build/typecheck, patch tests 6/6 PASS. New security tests/release job require their own PR CI proof.
+- PUBLIC release assets: NONE at start of change. No VPS, Tailscale, SSH or external IPs used.
+- `docs/RELEASE_SECURITY.md` records hard boundary, validations and incomplete hardening work.

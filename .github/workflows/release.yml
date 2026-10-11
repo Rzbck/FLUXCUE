@@ -1,0 +1,123 @@
+name: FLUXCUE Studio Release (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag, e.g. v0.1.0-alpha.0'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    # Source and release intent are controlled on the protected default branch.
+    if: github.repository == 'Rzbck/FLUXCUE' && github.ref == 'refs/heads/main' && github.actor == 'Rzbck'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      ci_url: ${{ steps.verify.outputs.ci_url }}
+    steps:
+      - name: Checkout exact trusted main commit (no saved credentials)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Validate manual version and source CI on main
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]] || { echo 'Bad version'; exit 1; }
+          current="$(gh api repos/Rzbck/FLUXCUE/commits/main --jq .sha)"
+          [[ "$current" == "$GITHUB_SHA" ]] || { echo 'Not current main HEAD'; exit 1; }
+          ci_url="$(gh api --method GET "repos/Rzbck/FLUXCUE/actions/runs?head_sha=$GITHUB_SHA&event=push&status=completed&per_page=100" --jq              "[.workflow_runs[] | select(.head_sha == \"$GITHUB_SHA\" and .head_branch == \"main\" and .event == \"push\" and .name == \"FLUXCUE Studio CI\" and .status == \"completed\" and .conclusion == \"success\")][0].html_url // empty")"
+          [[ "$ci_url" == https://github.com/Rzbck/FLUXCUE/actions/runs/* ]] || { echo 'Missing successful public CI'; exit 1; }
+          echo "ci_url=$ci_url" >> "$GITHUB_OUTPUT"
+          echo "Public CI confirmed for exact source SHA."
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Scan committed public files before installing
+        run: node scripts/check-public-security.mjs --repo
+      - name: Locked install, no npm install scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Typecheck, build, test, scan distributable
+        run: |
+          set -euo pipefail
+          npm run build
+          npm test
+          node scripts/check-public-security.mjs --dist
+      - name: Prepare reproducible static archive + signed-by-digest manifest
+        env:
+          VERSION: ${{ inputs.version }}
+          CI_URL: ${{ steps.verify.outputs.ci_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/index.html
+          mkdir -p release
+          name="fluxcue-studio-$VERSION-$GITHUB_SHA.tar.gz"
+          tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -C dist -cf - . | gzip -n -9 > "release/$name"
+          (cd release && sha256sum "$name" > SHA256SUMS)
+          digest="$(sha256sum "release/$name" | awk '{print $1}')"
+          jq -n -S --arg version "$VERSION" --arg source_sha "$GITHUB_SHA" --arg ci_url "$CI_URL"             --arg archive "$name" --arg sha256 "$digest"             '{schema:1,product:"FLUXCUE Studio",mode:"SIMULATOR",version:$version,source_sha:$source_sha,ci_url:$ci_url,archive:$archive,sha256:$sha256}' > release/manifest.json
+          (cd release && sha256sum --check SHA256SUMS)
+      - name: Upload audited static package (NO SSH OR VPS ACCESS)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: studio-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 2
+
+  publish:
+    needs: build
+    if: github.repository == 'Rzbck/FLUXCUE' && github.ref == 'refs/heads/main' && github.actor == 'Rzbck'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # No checkout, Node, npm, private secrets, Tailscale or untrusted code here.
+    permissions:
+      contents: write
+    steps:
+      - name: Download only the built release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: studio-${{ github.sha }}
+          path: release
+      - name: Check manifest and artifact bytes
+        env:
+          VERSION: ${{ inputs.version }}
+          CI_URL: ${{ needs.build.outputs.ci_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]] || exit 1
+          [[ "$(find release -maxdepth 1 -type f | wc -l)" -eq 3 ]] || exit 1
+          jq -e --arg version "$VERSION" --arg sha "$GITHUB_SHA" --arg ci "$CI_URL"             '.schema == 1 and .version == $version and .mode == "SIMULATOR" and .source_sha == $sha and .ci_url == $ci' release/manifest.json >/dev/null
+          name="$(jq -r .archive release/manifest.json)"
+          [[ "$name" == "fluxcue-studio-$VERSION-$GITHUB_SHA.tar.gz" ]] || exit 1
+          [[ "$(jq -r .sha256 release/manifest.json)" == "$(sha256sum "release/$name" | awk '{print $1}')" ]] || exit 1
+          (cd release && sha256sum --check SHA256SUMS)
+          test -s "release/$name"
+          test -s release/manifest.json
+      - name: Publish GitHub prerelease (the only write-token step)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh api "repos/Rzbck/FLUXCUE/git/ref/tags/$VERSION" --jq '.ref' >/dev/null 2>&1; then
+            echo 'Refusing existing tag'; exit 1
+          fi
+          if gh release view "$VERSION" --repo Rzbck/FLUXCUE >/dev/null 2>&1; then
+            echo 'Refusing existing release'; exit 1
+          fi
+          gh release create "$VERSION" release/*.tar.gz release/SHA256SUMS release/manifest.json \
+            --repo Rzbck/FLUXCUE --target "$GITHUB_SHA" --title "FLUXCUE Studio $VERSION (SIMULATOR)" \
+            --notes "Preview-only static Vue/Three.js editor. Verified public CI; SHA256SUMS and manifest.json provided. NO Art-Net/sACN output, NO Oracle connection or deployment." \
+            --prerelease
