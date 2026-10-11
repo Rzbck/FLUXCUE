@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
@@ -16,6 +20,7 @@ import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './
 import {commitHistory,stepHistory,sameUndoableState} from './core/editor-history.mjs';
 import {DIFFUSERS,EMITTERS,optics,copyFixtures} from './core/led-optics.mjs';
 import {ADVANCED_EFFECTS,effectSample} from './core/effects.mjs';
+import {lightSamples} from './core/lighting.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks'
   | 'breath'|'pulse'|'comet'|'scanner'|'theater'|'sparkle'|'fire'|'plasma'|'spatial-ripple'|'spatial-orbit'|'strobe';
@@ -83,6 +88,11 @@ const toolMode = ref<ToolMode>('translate');
 const positionSnap = ref(0.1);
 const angleSnap = ref(15);
 const showGrid = ref(true);
+const lightEnabled=ref(true);
+const lightPower=ref(1.5);
+const bloomPower=ref(0.6);
+const shadowQuality=ref<'off'|'low'|'high'>('low');
+const lightingSamplesUsed=ref(0);
 const undoStack = ref<SceneSnapshot[]>([]);
 const redoStack = ref<SceneSnapshot[]>([]);
 const activeIndex = ref(1);
@@ -109,6 +119,9 @@ const totalPixels = computed(() => fixtures.value.reduce((s,f)=>s+sanitizeFixtur
 const totalUniverses = computed(() => fixtures.value.reduce((s,f)=>s+describePatch(sanitizeFixture(f).pixels,f.format).universesUsed,0));
 const viewport = ref<HTMLElement|null>(null);
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, controls: OrbitControls;
+let composer:EffectComposer, bloomPass:UnrealBloomPass;
+const lightRig:{light:THREE.SpotLight; target:THREE.Object3D}[]=[];
+let previewSurfaces:THREE.Object3D[]=[];
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
@@ -150,7 +163,7 @@ const gradientEnd = new THREE.Color('#1b72a7');
 function resize() {
   if (!viewport.value || !renderer || !camera) return;
   const w = Math.max(1, viewport.value.clientWidth), h = Math.max(1, viewport.value.clientHeight);
-  renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h,false);composer?.setSize(w,h);camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
   return { projectName:projectName.value,fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
@@ -790,6 +803,28 @@ function drawPixels(){
     for(const mesh of [front,back,cover])if(mesh?.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
 }
+function updateLightingRig(){
+  if(!lightRig.length)return;
+  const samples=lightEnabled.value?lightSamples(fixtures.value,8):[];
+  lightingSamplesUsed.value=samples.length;
+  for(let i=0;i<lightRig.length;i++){
+    const slot=lightRig[i],data=samples[i];
+    if(!data){slot.light.visible=false;continue;}
+    const f=fixtures.value.find(x=>x.id===data.id);
+    if(!f){slot.light.visible=false;continue;}
+    slot.light.visible=true;
+    const pixel=Math.max(0,Math.min(f.pixels-1,data.index));
+    if(blackout.value)tmp.setRGB(0,0,0);
+    else sampleCurrentPixel(f,pixel,f.pixels,showTime,tmp).multiplyScalar(brightness.value);
+    slot.light.color.copy(tmp);
+    slot.light.intensity=Math.max(0,lightPower.value*22*tmp.getHSL({h:0,s:0,l:0}).l);
+    slot.light.angle=Math.min(Math.PI/2-.05,data.spread);
+    slot.light.position.set(data.x,data.y,data.z);
+    slot.target.position.set(data.x,data.y,data.z+data.side*3.0);
+    slot.target.updateMatrixWorld();
+    slot.light.castShadow=shadowQuality.value!=='off'&&i<(shadowQuality.value==='high'?4:2);
+  }
+}
 function frame(now:number){
   raf=requestAnimationFrame(frame);
   const dt=lastFrame?Math.max(0,(now-lastFrame)/1000):0;
@@ -800,7 +835,9 @@ function frame(now:number){
     applyCue((activeIndex.value+1)%cues.value.length);
   }
   if(now-lastUiFrame>75){showSeconds.value=showTime;lastUiFrame=now;}
-  drawPixels();controls.update();renderer.render(scene,camera);
+  drawPixels();updateLightingRig();controls.update();
+  bloomPass.strength=bloomPower.value;
+  composer.render();
   frameCount++;
   if(now-frameSampleAt>1000){fps.value=Math.round(frameCount*1000/(now-frameSampleAt));frameSampleAt=now;frameCount=0;}
 }
@@ -1012,7 +1049,37 @@ onMounted(()=>{
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.7;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   viewport.value!.appendChild(renderer.domElement);
+  composer=new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene,camera));
+  bloomPass=new UnrealBloomPass(new THREE.Vector2(1,1),0.6,.35,.85);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+  // Real light must hit a surface. A neutral stage wall, floor and blocking
+  // pillar demonstrate falloff, occlusion and cast shadows in design meters.
+  const concrete=new THREE.MeshStandardMaterial({color:'#33363b',roughness:.88,metalness:0});
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(24,20),concrete.clone());
+  floor.rotation.x=-Math.PI/2;floor.position.y=-.07;floor.receiveShadow=true;scene.add(floor);
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,6),concrete.clone());
+  wall.rotation.y=Math.PI;wall.position.set(0,2.95,4.2);
+  wall.receiveShadow=true;scene.add(wall);
+  const prop=new THREE.Mesh(new THREE.BoxGeometry(.95,1.9,.75),
+    new THREE.MeshStandardMaterial({color:'#56595c',roughness:.75}));
+  prop.position.set(.8,.9,1.65);prop.castShadow=true;prop.receiveShadow=true;scene.add(prop);
+  previewSurfaces=[floor,wall,prop];
+  const ambient=new THREE.AmbientLight(0xffffff,.065);scene.add(ambient);previewSurfaces.push(ambient);
+  for(let i=0;i<8;i++){
+    const light=new THREE.SpotLight(0xffffff,0,12,.55,.9,2);
+    light.visible=false;light.castShadow=i<2;
+    light.shadow.mapSize.set(512,512);
+    light.shadow.bias=-.0001;light.shadow.normalBias=.012;
+    const target=new THREE.Object3D();scene.add(target);
+    light.target=target;scene.add(light);lightRig.push({light,target});
+  }
   controls=new OrbitControls(camera,renderer.domElement);
   controls.target.set(0,1.35,0);controls.enableDamping=true;controls.dampingFactor=0.065;controls.update();
   updateGrid();
@@ -1086,8 +1153,14 @@ onUnmounted(()=>{
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
   if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
   if (scene)disposeStrips();
+  for(const item of lightRig){scene.remove(item.light);scene.remove(item.target);item.light.dispose();}
+  lightRig.splice(0);
+  for(const obj of previewSurfaces){scene.remove(obj);
+    if(obj instanceof THREE.Mesh){obj.geometry.dispose();(obj.material as THREE.Material).dispose();}
+  }
+  previewSurfaces=[];
   pixelGeometry?.dispose();bodyGeometry?.dispose();tubeGeometry?.dispose();flatGeometry?.dispose();
-  controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
+  composer?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
 watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.visible,f.locked,
   f.emitterMode,f.diffuser,f.ledSizeMm].join(':')).join('|'),()=>{rebuildScene();syncTransform();});
@@ -1180,6 +1253,17 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
           </select></label>
           <label class="grid-checkbox"><input type="checkbox" v-model="showGrid"/> GRID</label>
           <span class="tool-separator"></span>
+          <label title="Light real 3D surfaces in the preview"><input type="checkbox" v-model="lightEnabled"/> LIGHT</label>
+          <label title="Bounded simulated real lights; not per-pixel ray tracing">POWER
+            <input class="light-power" type="range" v-model.number="lightPower" min="0" max="5" step=".1"/>
+          </label>
+          <label title="Screen-space bloom/glow">GLOW
+            <input class="light-power" type="range" v-model.number="bloomPower" min="0" max="1.5" step=".05"/>
+          </label>
+          <label>SHADOWS <select v-model="shadowQuality">
+            <option value="off">OFF</option><option value="low">2 LIGHTS</option><option value="high">4 LIGHTS</option>
+          </select></label>
+          <span class="tool-separator"></span>
           <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
           <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
           <button title="Copy selected LED strips (Ctrl+C)" @click="copySelected">⧉ COPY <kbd>Ctrl+C</kbd></button>
@@ -1187,7 +1271,8 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
         </div>
         <div class="viewport" ref="viewport">
           <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CTRL/SHIFT + CLICK MULTI SELECT · RIGHT CLICK MENU · DRAG GROUP GIZMO</span></div>
-          <div class="viewport-details">Z UP? <b>Y UP</b> &nbsp; · &nbsp; <b>{{ totalPixels }}</b> LEDS</div>
+          <div class="viewport-details"><b>Y UP</b> · <b>{{totalPixels}}</b> LEDS ·
+          <b>{{lightingSamplesUsed}}</b>/8 LIGHT SAMPLES · APPROX SHADOWS / GLOW</div>
           <div class="viewport-axis">X <span>Y</span> Z</div>
         </div>
         <section class="cue-panel" :class="{compact:collapsedPanels.cues}">
