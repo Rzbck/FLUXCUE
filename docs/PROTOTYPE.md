@@ -36,3 +36,13 @@ Verify `npm install && npm run build && npm test`; inspect 3D UI at 1920x1080 an
 To test the browser Studio without installing Node or cloning a repository on your PC, enable **Settings → Pages → Build and deployment → Source: GitHub Actions** for this PUBLIC repository. Once `.github/workflows/pages.yml` has completed successfully on main, visit **https://rzbck.github.io/FLUXCUE/**. This runs a **software-only public SIMULATOR**, not a lighting controller. Never enter live credentials, customer config, private networking information or passwords in its import panel.
 
 The preview is compiled with `--mode pages` to use the `/FLUXCUE/` asset base. The release archives remain built for root-path hosting. Public Pages require no VPS or local installation. Use Brave DevTools (F12) to report JavaScript errors; check orbit, GO/BACK, fixtures, colors, JSON export/import at 1920×1080 and 1366×768. Do not call the page browser-verified until tested.
+
+## FLUXCUE 3D editing workflow (2026-10-11, browser check pending)
+- Recommended: use [public Studio preview](https://rzbck.github.io/FLUXCUE/) in Brave; no npm installation required. If updating after a merge, hard refresh with Ctrl+Shift+R.
+- Click a strip in 3D to select, or select it in the grouped left outliner. A coloured XYZ gizmo appears on visible, unlocked fixtures.
+- **M** = move XYZ by dragging the gizmo; **R** = rotate about Z. The grid snap selector controls the interval (FREE, 1/5/10/25/50 cm or 1m); rotation selector offers FREE, 1/5/15/30/45/90°. Toggle GRID to hide/show both the 1m floor grid and local precision grid.
+- Use **ISO / FRONT / TOP / RIGHT** camera controls (shortcuts F / 1 / 2 / 3). Orbit/zoom uses the mouse outside the gizmo. The camera is disabled while a gizmo is dragged.
+- Right inspector: edit name, assign group, show/hide, lock/unlock, duplicate/delete, exact length/pixel count, x/y/z and Z-angle. Left outliner groups fixtures by label.
+- **Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y** undo/redo completed geometry/history steps; **Ctrl+S** downloads local JSON. Lock prevents direct transform/deletion. Hiding removes a fixture from viewport picking; it remains in your model/export.
+- Old schemaVersion 0.1.0 JSON remains importable; new optional group, visible and locked fields are included on export.
+- No real Art-Net, sACN, network LED packet emission or server connection. Do not put confidential site/device information into a public browser preview. Formal 1920x1080 and 1366x768 Brave smoke tests of 3D gestures and history are still needed.

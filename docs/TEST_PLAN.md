@@ -64,3 +64,11 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 ### Evidence
 - [x] PR #15 CI 38159922632 success; security scans on 41 tracked files and both generated dist variants; `PAGES PASS`.
 - [ ] Browser acceptance at target resolutions still NOT RUN, hence #4 remains open.
+
+## Spatial editor and CAD-style interactions
+- [x] PR #16 run 38161826358: TypeScript, Vite ordinary/Pages builds, **28/28 tests**, source/dist security scans and path check PASS. Runtime browser interaction remains UNTESTED.
+- [ ] Brave: click on any tiny LED line to select; drag X/Y/Z translation gizmo or Z-angle gizmo, orbit only when gizmo released.
+- [ ] Snap accuracy 1cm and 5cm, 1°/15°; FREE mode; grid show/hide, camera presets.
+- [ ] Single Ctrl+Z reverts one full gizmo drag (not each frame), redo; numeric undo, add/duplicate/delete fixture; lock prevents transform/delete and hidden fixture cannot be picked.
+- [ ] Export/import fixtures with group/visible/locked; backward-compatible old `0.1.0` saved projects.
+- [ ] Verify 1920x1080 and 1366x768; no credentials or network output from preview.
