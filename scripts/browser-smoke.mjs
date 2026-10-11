@@ -130,7 +130,14 @@ try{
 }finally{
  try{ws?.close();}catch{}
  for(const entry of waiting.values())entry.reject(new Error('Browser smoke closing'));
- if(chrome)chrome.kill('SIGKILL');
+ if(chrome){
+  if(chrome.exitCode===null)chrome.kill('SIGKILL');
+  await Promise.race([new Promise(r=>chrome.once('exit',r)),delay(2000)]);
+ }
+ server.closeAllConnections();
  await new Promise(r=>server.close(r));
- rmSync(profile,{recursive:true,force:true});
+ // Chrome may briefly recreate files after SIGKILL; a temporary CI profile
+ // cleanup race must not invalidate verified editor/Undo test results.
+ try{rmSync(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+ catch(e){console.warn('CHROME TEMP CLEANUP WARNING:',String(e));}
 }
