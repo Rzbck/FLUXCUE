@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
@@ -15,8 +19,11 @@ import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from '.
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
 import {commitHistory,stepHistory,sameUndoableState} from './core/editor-history.mjs';
 import {DIFFUSERS,EMITTERS,optics,copyFixtures} from './core/led-optics.mjs';
+import {ADVANCED_EFFECTS,effectSample} from './core/effects.mjs';
+import {lightSamples} from './core/lighting.mjs';
 
-type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
+type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks'
+  | 'breath'|'pulse'|'comet'|'scanner'|'theater'|'sparkle'|'fire'|'plasma'|'spatial-ripple'|'spatial-orbit'|'strobe';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string; ledSizeMm:number; emitterMode:'front'|'dual'; diffuser:'none'|'flat'|'tube' };
 type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
@@ -81,6 +88,11 @@ const toolMode = ref<ToolMode>('translate');
 const positionSnap = ref(0.1);
 const angleSnap = ref(15);
 const showGrid = ref(true);
+const lightEnabled=ref(true);
+const lightPower=ref(1.5);
+const bloomPower=ref(0.6);
+const shadowQuality=ref<'off'|'low'|'high'>('low');
+const lightingSamplesUsed=ref(0);
 const undoStack = ref<SceneSnapshot[]>([]);
 const redoStack = ref<SceneSnapshot[]>([]);
 const activeIndex = ref(1);
@@ -107,6 +119,9 @@ const totalPixels = computed(() => fixtures.value.reduce((s,f)=>s+sanitizeFixtur
 const totalUniverses = computed(() => fixtures.value.reduce((s,f)=>s+describePatch(sanitizeFixture(f).pixels,f.format).universesUsed,0));
 const viewport = ref<HTMLElement|null>(null);
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, controls: OrbitControls;
+let composer:EffectComposer, bloomPass:UnrealBloomPass;
+const lightRig:{light:THREE.SpotLight; target:THREE.Object3D}[]=[];
+let previewSurfaces:THREE.Object3D[]=[];
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
@@ -125,6 +140,19 @@ const strips = new Map<string, THREE.InstancedMesh>();
 const rearStrips = new Map<string, THREE.InstancedMesh>();
 const ledBodies = new Map<string, THREE.InstancedMesh>();
 const diffusers = new Map<string, THREE.InstancedMesh>();
+// World XYZ pixels are cached when geometry changes, not rebuilt by each effect.
+const worldPixelCache=new Map<string,Float32Array>();
+const worldScratch={x:0,y:0,z:0};
+function cachedWorldPixel(f:Fixture,index:number){
+  const data=worldPixelCache.get(f.id),k=index*3;
+  if(data&&k+2<data.length){
+    worldScratch.x=data[k];worldScratch.y=data[k+1];worldScratch.z=data[k+2];
+    return worldScratch;
+  }
+  const xyz=scenePixelPosition(f,index);
+  worldScratch.x=xyz.x;worldScratch.y=xyz.y;worldScratch.z=xyz.z;
+  return worldScratch;
+}
 let pixelGeometry: THREE.PlaneGeometry;
 let bodyGeometry: THREE.BoxGeometry;
 let tubeGeometry: THREE.CylinderGeometry;
@@ -148,7 +176,7 @@ const gradientEnd = new THREE.Color('#1b72a7');
 function resize() {
   if (!viewport.value || !renderer || !camera) return;
   const w = Math.max(1, viewport.value.clientWidth), h = Math.max(1, viewport.value.clientHeight);
-  renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h,false);composer?.setSize(w,h);camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
   return { projectName:projectName.value,fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
@@ -158,13 +186,12 @@ function snapshotScene(): SceneSnapshot {
     color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},
     cueTargetMode:cueTargetMode.value,cueTargetIdsDraft:[...cueTargetIdsDraft.value] };
 }
-function rememberScene(previous: SceneSnapshot, exact=false) {
+function rememberScene(previous: SceneSnapshot, _exact=false) {
   const next=snapshotScene();
   if(sameUndoableState(previous,next)){historyBaseline=next;return;}
-  const baseline=historyBaseline;
-  const before=exact?previous:
-    (baseline && !sameUndoableState(baseline,previous)?baseline:previous);
-  const result=commitHistory(undoStack.value,redoStack.value,before,next,100);
+  // Explicit mutations always restore precisely the snapshot taken before
+  // that mutation. Do not substitute a stale reactive watcher baseline.
+  const result=commitHistory(undoStack.value,redoStack.value,previous,next,100);
   undoStack.value=result.undo;redoStack.value=result.redo;
   historyBaseline=next;
 }
@@ -436,7 +463,7 @@ function disposeStrips(){
   if(!scene)return;
   for(const map of [strips,rearStrips,ledBodies,diffusers])
     for(const id of [...map.keys()])removeFixtureMesh(map,id);
-  tintColors.clear();
+  tintColors.clear();worldPixelCache.clear();
   for(const line of hitLines.values()){
     scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();
   }
@@ -463,6 +490,7 @@ function rebuildScene(){
   const live=new Set(fixtures.value.filter(f=>f.visible).map(f=>f.id));
   for(const map of [strips,rearStrips,ledBodies,diffusers])
     for(const id of [...map.keys()])if(!live.has(id))removeFixtureMesh(map,id);
+  for(const id of [...worldPixelCache.keys()])if(!live.has(id))worldPixelCache.delete(id);
   for(const [id,line] of hitLines)if(!live.has(id)){
     scene.remove(line);line.geometry.dispose();(line.material as THREE.Material).dispose();hitLines.delete(id);
   }
@@ -483,9 +511,11 @@ function rebuildScene(){
     const a=THREE.MathUtils.degToRad(f.angle),dx=Math.cos(a),dy=Math.sin(a);
     const size=o.ledSizeMm/1000;
     const segmentLength=Math.max(0.001,f.length/n);
+    const positions=new Float32Array(n*3);
     for(let i=0;i<n;i++){
       const t=n<=1?0:(i/(n-1)-0.5)*f.length;
       const x=f.x+dx*t,y=f.y+dy*t,z=f.z;
+      positions[i*3]=x;positions[i*3+1]=y;positions[i*3+2]=z;
       dummy.rotation.set(0,0,0);
       dummy.position.set(x,y,z);
       dummy.scale.set(size,size,size*.24);
@@ -506,6 +536,7 @@ function rebuildScene(){
         dummy.updateMatrix();diffuser.setMatrixAt(i,dummy.matrix);
       }
     }
+    worldPixelCache.set(f.id,positions);
     for(const mesh of [front,rear,body,diffuser])if(mesh)mesh.instanceMatrix.needsUpdate=true;
     const points=[
       new THREE.Vector3(f.x-dx*f.length/2,f.y-dy*f.length/2,f.z),
@@ -727,9 +758,18 @@ function onOutsideMenu(event:PointerEvent){
 }
 function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number, result: THREE.Color, fixture: Fixture, cueSpeed=speed.value) {
   const p = count <= 1 ? 0 : index/(count-1);
+  if(ADVANCED_EFFECTS.includes(mode)){
+    const world=cachedWorldPixel(fixture,index);
+    const sampled=effectSample(mode,p,world,t,cueSpeed);
+    if(sampled.fire){
+      const v=sampled.level;
+      return result.setRGB(v,Math.min(1,v*.32),Math.min(1,v*.035));
+    }
+    return result.set(hex).multiplyScalar(sampled.level);
+  }
   if(mode==='spatial-wave' || mode==='spatial-blocks'){
     // Stable physical XYZ coordinates: moving a fixture changes how a wave crosses it.
-    const world=scenePixelPosition(sanitizeFixture(fixture),index);
+    const world=cachedWorldPixel(fixture,index);
     const amount=mode==='spatial-wave'?spatialWave(world,t,cueSpeed):spatialBlocks(world,t,cueSpeed);
     return result.set(hex).multiplyScalar(.06+amount*.94);
   }
@@ -779,6 +819,28 @@ function drawPixels(){
     for(const mesh of [front,back,cover])if(mesh?.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
 }
+function updateLightingRig(){
+  if(!lightRig.length)return;
+  const samples=lightEnabled.value?lightSamples(fixtures.value,8):[];
+  lightingSamplesUsed.value=samples.length;
+  for(let i=0;i<lightRig.length;i++){
+    const slot=lightRig[i],data=samples[i];
+    if(!data){slot.light.visible=false;continue;}
+    const f=fixtures.value.find(x=>x.id===data.id);
+    if(!f){slot.light.visible=false;continue;}
+    slot.light.visible=true;
+    const pixel=Math.max(0,Math.min(f.pixels-1,data.index));
+    if(blackout.value)tmp.setRGB(0,0,0);
+    else sampleCurrentPixel(f,pixel,f.pixels,showTime,tmp).multiplyScalar(brightness.value);
+    slot.light.color.copy(tmp);
+    slot.light.intensity=Math.max(0,lightPower.value*22*tmp.getHSL({h:0,s:0,l:0}).l);
+    slot.light.angle=Math.min(Math.PI/2-.05,data.spread);
+    slot.light.position.set(data.x,data.y,data.z);
+    slot.target.position.set(data.x,data.y,data.z+data.side*3.0);
+    slot.target.updateMatrixWorld();
+    slot.light.castShadow=shadowQuality.value!=='off'&&i<(shadowQuality.value==='high'?4:2);
+  }
+}
 function frame(now:number){
   raf=requestAnimationFrame(frame);
   const dt=lastFrame?Math.max(0,(now-lastFrame)/1000):0;
@@ -789,7 +851,9 @@ function frame(now:number){
     applyCue((activeIndex.value+1)%cues.value.length);
   }
   if(now-lastUiFrame>75){showSeconds.value=showTime;lastUiFrame=now;}
-  drawPixels();controls.update();renderer.render(scene,camera);
+  drawPixels();updateLightingRig();controls.update();
+  bloomPass.strength=bloomPower.value;
+  composer.render();
   frameCount++;
   if(now-frameSampleAt>1000){fps.value=Math.round(frameCount*1000/(now-frameSampleAt));frameSampleAt=now;frameCount=0;}
 }
@@ -1001,7 +1065,37 @@ onMounted(()=>{
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.7;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   viewport.value!.appendChild(renderer.domElement);
+  composer=new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene,camera));
+  bloomPass=new UnrealBloomPass(new THREE.Vector2(1,1),0.6,.35,.85);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+  // Real light must hit a surface. A neutral stage wall, floor and blocking
+  // pillar demonstrate falloff, occlusion and cast shadows in design meters.
+  const concrete=new THREE.MeshStandardMaterial({color:'#33363b',roughness:.88,metalness:0});
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(24,20),concrete.clone());
+  floor.rotation.x=-Math.PI/2;floor.position.y=-.07;floor.receiveShadow=true;scene.add(floor);
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,6),concrete.clone());
+  wall.rotation.y=Math.PI;wall.position.set(0,2.95,4.2);
+  wall.receiveShadow=true;scene.add(wall);
+  const prop=new THREE.Mesh(new THREE.BoxGeometry(.95,1.9,.75),
+    new THREE.MeshStandardMaterial({color:'#56595c',roughness:.75}));
+  prop.position.set(.8,.9,1.65);prop.castShadow=true;prop.receiveShadow=true;scene.add(prop);
+  previewSurfaces=[floor,wall,prop];
+  const ambient=new THREE.AmbientLight(0xffffff,.065);scene.add(ambient);previewSurfaces.push(ambient);
+  for(let i=0;i<8;i++){
+    const light=new THREE.SpotLight(0xffffff,0,12,.55,.9,2);
+    light.visible=false;light.castShadow=i<2;
+    light.shadow.mapSize.set(512,512);
+    light.shadow.bias=-.0001;light.shadow.normalBias=.012;
+    const target=new THREE.Object3D();scene.add(target);
+    light.target=target;scene.add(light);lightRig.push({light,target});
+  }
   controls=new OrbitControls(camera,renderer.domElement);
   controls.target.set(0,1.35,0);controls.enableDamping=true;controls.dampingFactor=0.065;controls.update();
   updateGrid();
@@ -1050,12 +1144,45 @@ onMounted(()=>{
   window.addEventListener('pointerup',finishTransformDrag);
   window.addEventListener('pointercancel',finishTransformDrag);
   window.addEventListener('blur',finishTransformDrag);
+  // The smoke hook exists ONLY in --mode smoke builds. Production Pages has no
+  // test controller, so no browser-side API to mutate geometry bypassing the UI.
+  if(import.meta.env.MODE==='smoke'){
+    (window as Window & {__FLUXCUE_SMOKE__?:unknown}).__FLUXCUE_SMOKE__={
+      drag:(axis:'x'|'y'|'z',distance:number)=>{
+        if(!Number.isFinite(distance)||Math.abs(distance)>5)throw new RangeError('bad smoke displacement');
+        transform.dispatchEvent({type:'mouseDown'} as never);
+        transformProxy.position[axis]+=distance;
+        transform.dispatchEvent({type:'objectChange'} as never);
+        transform.dispatchEvent({type:'mouseUp'} as never);
+        return {position:{x:current.value.x,y:current.value.y,z:current.value.z},undo:undoStack.value.length};
+      },
+      state:()=>({x:current.value.x,y:current.value.y,z:current.value.z,
+        undo:undoStack.value.length,redo:redoStack.value.length}),
+      pointerCandidates:()=>{
+        scene.updateMatrixWorld(true);
+        const picker=(transform as unknown as {_gizmo?:{picker?:{translate?:THREE.Group}}})._gizmo?.picker?.translate;
+        const rect=renderer.domElement.getBoundingClientRect();
+        const candidates:{name:string;x:number;y:number;geometry:string}[]=[];
+        picker?.traverse(o=>{
+          const mesh=o as THREE.Mesh;
+          if(o.name!=='X'||!mesh.geometry)return;
+          mesh.geometry.computeBoundingSphere();
+          const center=mesh.geometry.boundingSphere?.center.clone()||new THREE.Vector3();
+          center.applyMatrix4(mesh.matrixWorld).project(camera);
+          candidates.push({name:o.name,x:Math.round(rect.left+(center.x+1)*rect.width/2),
+            y:Math.round(rect.top+(1-center.y)*rect.height/2),geometry:mesh.geometry.type});
+        });
+        return {candidates,canvas:{left:rect.left,top:rect.top,width:rect.width,height:rect.height}};
+      },
+      undo:undoEdit,redo:redoEdit
+    };
+  }
   renderer.domElement.addEventListener('click',onSceneClick);
   renderer.domElement.addEventListener('contextmenu',onSceneContextMenu);
   document.addEventListener('pointerdown',onOutsideMenu);
   rebuildScene();syncTransform();resize();sizeObserver=new ResizeObserver(resize);sizeObserver.observe(viewport.value!);
   frameSampleAt=performance.now();raf=requestAnimationFrame(frame);
-  window.addEventListener('keydown',onKey);
+  window.addEventListener('keydown',onKey,true);
   window.addEventListener('beforeunload',persistLocal);
 });
 onUnmounted(()=>{
@@ -1063,8 +1190,10 @@ onUnmounted(()=>{
   document.removeEventListener('focusin',onFieldFocus,true);
   document.removeEventListener('focusout',onFieldBlur,true);
   if(saveTimer)clearTimeout(saveTimer);
-  cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
+  cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey,true);
   window.removeEventListener('beforeunload',persistLocal);
+  if(import.meta.env.MODE==='smoke')
+    delete (window as Window & {__FLUXCUE_SMOKE__?:unknown}).__FLUXCUE_SMOKE__;
   window.removeEventListener('pointerup',finishTransformDrag);
   window.removeEventListener('pointercancel',finishTransformDrag);
   window.removeEventListener('blur',finishTransformDrag);
@@ -1075,8 +1204,14 @@ onUnmounted(()=>{
   if (grid){scene.remove(grid);grid.geometry.dispose();(grid.material as THREE.Material).dispose();}
   if (coarseGrid){scene.remove(coarseGrid);coarseGrid.geometry.dispose();(coarseGrid.material as THREE.Material).dispose();}
   if (scene)disposeStrips();
+  for(const item of lightRig){scene.remove(item.light);scene.remove(item.target);item.light.dispose();}
+  lightRig.splice(0);
+  for(const obj of previewSurfaces){scene.remove(obj);
+    if(obj instanceof THREE.Mesh){obj.geometry.dispose();(obj.material as THREE.Material).dispose();}
+  }
+  previewSurfaces=[];
   pixelGeometry?.dispose();bodyGeometry?.dispose();tubeGeometry?.dispose();flatGeometry?.dispose();
-  controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
+  composer?.dispose();controls?.dispose();renderer?.dispose();renderer?.domElement.remove();
 });
 watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.visible,f.locked,
   f.emitterMode,f.diffuser,f.ledSizeMm].join(':')).join('|'),()=>{rebuildScene();syncTransform();});
@@ -1093,7 +1228,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
 <template>
   <div class="shell">
     <header class="top">
-      <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>0.1 ALPHA</small></span></div>
+      <div class="brand"><span class="brand-mark">F</span><b>FLUXCUE</b><span class="studio-tag">STUDIO <small>3D PREVIEW</small></span></div>
       <div class="top-center"><input class="project-name-input" aria-label="Current project name" v-model="projectName" maxlength="80"
           @focus="beginEdit" @change="commitEdit" /><span class="separator"></span><span class="muted">SHOW A</span></div>
       <div class="top-tools"><span class="save-status" :class="{error:saveState==='ERROR'}" :title="saveState==='ERROR'?'Browser storage error: export a JSON backup':'Autosaved only in this browser'">● {{saveState==='PENDING'?'SAVING…':saveState==='RECOVERED'?'RESTORED':saveState==='ERROR'?'SAVE ERROR':saveState==='READY'?'LOCAL READY':'LOCAL SAVED'}}</span><span class="pill simulate">● SIMULATOR</span><button class="top-button" title="Export project JSON" @click="saveProject">BACKUP JSON</button><label class="top-button import">IMPORT<input accept=".json,application/json" type="file" @change="loadProject"/></label></div>
@@ -1169,6 +1304,17 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
           </select></label>
           <label class="grid-checkbox"><input type="checkbox" v-model="showGrid"/> GRID</label>
           <span class="tool-separator"></span>
+          <label title="Light real 3D surfaces in the preview"><input type="checkbox" v-model="lightEnabled"/> LIGHT</label>
+          <label title="Bounded simulated real lights; not per-pixel ray tracing">POWER
+            <input class="light-power" type="range" v-model.number="lightPower" min="0" max="5" step=".1"/>
+          </label>
+          <label title="Screen-space bloom/glow">GLOW
+            <input class="light-power" type="range" v-model.number="bloomPower" min="0" max="1.5" step=".05"/>
+          </label>
+          <label>SHADOWS <select v-model="shadowQuality">
+            <option value="off">OFF</option><option value="low">2 LIGHTS</option><option value="high">4 LIGHTS</option>
+          </select></label>
+          <span class="tool-separator"></span>
           <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
           <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
           <button title="Copy selected LED strips (Ctrl+C)" @click="copySelected">⧉ COPY <kbd>Ctrl+C</kbd></button>
@@ -1176,7 +1322,8 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
         </div>
         <div class="viewport" ref="viewport">
           <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CTRL/SHIFT + CLICK MULTI SELECT · RIGHT CLICK MENU · DRAG GROUP GIZMO</span></div>
-          <div class="viewport-details">Z UP? <b>Y UP</b> &nbsp; · &nbsp; <b>{{ totalPixels }}</b> LEDS</div>
+          <div class="viewport-details"><b>Y UP</b> · <b>{{totalPixels}}</b> LEDS ·
+          <b>{{lightingSamplesUsed}}</b>/8 LIGHT SAMPLES · APPROX SHADOWS / GLOW</div>
           <div class="viewport-axis">X <span>Y</span> Z</div>
         </div>
         <section class="cue-panel" :class="{compact:collapsedPanels.cues}">
@@ -1312,6 +1459,19 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
             <option value="gradient">Strip Gradient</option>
             <option value="spatial-wave">World-space Wave</option>
             <option value="spatial-blocks">3D Blocks</option>
+            <optgroup label="DYNAMIC / GENERATIVE">
+              <option value="breath">Breathing</option>
+              <option value="pulse">Heartbeat Pulse</option>
+              <option value="comet">Comet Tail</option>
+              <option value="scanner">Scanner</option>
+              <option value="theater">Theatre Chase</option>
+              <option value="sparkle">Sparkle</option>
+              <option value="fire">Fire</option>
+              <option value="plasma">Plasma</option>
+              <option value="spatial-ripple">3D Ripple</option>
+              <option value="spatial-orbit">3D Orbit</option>
+              <option value="strobe">Strobe (3 Hz max)</option>
+            </optgroup>
           </select>
         </label>
         <label class="field"><span>COULEUR SÉLECTION</span><div class="control">

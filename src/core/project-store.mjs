@@ -1,6 +1,7 @@
 import {inferredDensity,normalizedChip} from './hardware.mjs';
 import {optics} from './led-optics.mjs';
-const effects=new Set(['solid','rainbow','chase','gradient','spatial-wave','spatial-blocks']);
+const effects=new Set(['solid','rainbow','chase','gradient','spatial-wave','spatial-blocks',
+ 'breath','pulse','comet','scanner','theater','sparkle','fire','plasma','spatial-ripple','spatial-orbit','strobe']);
 const hex=v=>typeof v==='string'&&/^#[a-f0-9]{6}$/i.test(v);
 const finite=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
 /** Validate saved data before applying ANY imported state; migration keeps old LED counts. */

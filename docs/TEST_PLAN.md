@@ -123,3 +123,13 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Inspect tiny square SMD from front/back; front invisible from rear, dual visible from rear; flat/tube diffuser visual comparison, no giant spheres, 30–144 LED/m density.
 - [ ] Select strip A, direct effect/red; select B/blue; preview A+B; update cue and press GO; no unrelated fixture recoloured; other cue layers remain.
 - [ ] Browser refresh restores optical modes, editable cues and groups. No physical light engine/photometric claims.
+
+## 2026-10-11 — PR #22 release acceptance and known gaps
+- [x] 81/81 Node unit tests, Vue typecheck, normal/Pages build, source/dist security checks in CI 38178519695.
+- [x] Headless Chrome/WebGL mount, synthetic TransformControls event lifecycle, real Ctrl+Z and redo.
+- [x] REAL Chrome mouse pointer X gizmo: actual 3.5m move, real Ctrl+Z restores coordinates; screenshot captured by smoke script, CI 38178297576 real pointer proof; cleanup-only failure corrected in green CI 38178426083.
+- [x] Eight-source sampled stage light budget, material/shadow/bloom Three.js preview and 11 new deterministic FX with pure tests.
+- [x] Complete comparative product/functionality audit of the previously pinned 13 GitHub alternatives in docs/AUDIT_STUDIO_PRODUCT_GAPS_2026-10-11.md.
+- [ ] Final protected PR #22 merge, main CI, Pages deployment with matching source SHA.
+- [ ] Manual Brave at 1366x768 and 1920x1080: exact mouse X/Y/Z, rapid drags, Ctrl+Z/redo, popup focus, rendering of 2/4 spot shadows and occluding surfaces, lighting-quality controls and effects.
+- [ ] FPS/GPU/p95/p99 measured benchmark 1k/10k/50k pixels, FX modifier/library architecture, GLB and splines, patch conflict engine and real protocol output: NOT RUN/IMPLEMENTED.

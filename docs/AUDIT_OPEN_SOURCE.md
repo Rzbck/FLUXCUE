@@ -123,3 +123,5 @@ New source candidates to audit:
 - https://github.com/ASLS-org/cueOS — embedded C cue control project; GPL-3.0 and older, evaluate ideas only.
 - https://github.com/KRUKMAN/swietlik — emerging ASLS fork with AI/MCP-oriented feature roadmap (GPL-3.0), inspiration only; maturity unverified.
 For pinned research commits see [UPSTREAM_SNAPSHOT.md](UPSTREAM_SNAPSHOT.md).
+
+**2026-10-11 update:** the full 13-alternative FLUXCUE functionality/engineering matrix and prioritized pro-readiness gaps are in [AUDIT_STUDIO_PRODUCT_GAPS_2026-10-11.md](AUDIT_STUDIO_PRODUCT_GAPS_2026-10-11.md). This complements the prior metadata/README audit; it is not a file-level license clearance or measured benchmark.

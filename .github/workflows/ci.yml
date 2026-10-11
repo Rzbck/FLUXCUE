@@ -38,3 +38,15 @@ jobs:
           npm run build -- --mode pages
           node scripts/check-public-security.mjs --dist
           node scripts/check-pages-output.mjs
+      - name: Chromium browser smoke (real Ctrl+Z and Vue/Three gizmo lifecycle)
+        run: |
+          set -euo pipefail
+          npm run build -- --mode smoke
+          node scripts/browser-smoke.mjs
+      - name: Save Chromium screenshot for visual QA
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 pinned
+        with:
+          name: fluxcue-browser-smoke
+          path: ${{ runner.temp }}/fluxcue-browser-smoke.png
+          if-no-files-found: ignore

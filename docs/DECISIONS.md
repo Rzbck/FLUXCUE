@@ -57,3 +57,12 @@ Make a small 5mm body and 3.8mm emissive surface the baseline, not visual sphere
 
 ## D-017 — Internal clipboard, semantic global history and direct cue feedback (2026-10-11)
 Copy and paste object fixtures within the editor's tab without intercepting native text clipboard input. History ignores selection-only actions; 3D drag uses an exact start/end transaction. Selecting fixture(s) then changing cue FX/colour activates a scoped, non-destructive preview immediately; UPDATE and NEW persist the authored cue with accumulated per-fixture colours and targets. GO is the only action to start actual cue simulation playback. Browser interactive acceptance remains pending.
+
+## D-018 — Transactional history + Chrome pointer QA (2026-10-11)
+Each editor operation commits its exact before snapshot. View changes (which fixture/cue was clicked) are not edits and must not consume Ctrl+Z. Capture-phase keyboard Undo is tested inside Chromium after a physically dispatched X gizmo press/drag/release. A smoke-only hook is compiled out of public Pages. Synthetic mouse-event tests alone are insufficient; additional manual Brave hardware acceptance is still required.
+
+## D-019 — Bounded physically-lit simulator (2026-10-11)
+Display SMD geometry and use up to 8 pooled dynamic directional SpotLights to illuminate three-dimensional surfaces and show shadow-caster occlusion; 2/4 spotlight shadows based on quality mode, ACES tonemapping and artistic UnrealBloomPass. This is a visually plausible PREVIEW, not IES/photometric raytracing, calibrated diffuser or per-LED GI. GPU/CPU at scale remain unmeasured and need acceptance tests.
+
+## D-020 — Self-authored native FX, richer modular graph later (2026-10-11)
+Add 11 deterministic self-authored patterns to the six original. Future signed-off work: parameter descriptors, palette/interpolation, modifiers, 3D masks, script/audio/media adapters, performance benchmarks. No GPL effect code has been transplanted.

@@ -1,8 +1,8 @@
 # FLUXCUE
 
-**Open-source browser-based 3D LED show design, pixel mapping and live control.**
+**Open-source browser-based 3D LED show design and simulation, with future live-output milestones.**
 
-> Project status: **V0.1 browser Studio simulation + source audit**. Vue/Three.js typecheck/build and 6 pure patch tests passed on GitHub Actions; interactive browser smoke test pending. Not production-ready: no Art-Net output or Oracle deployment.
+> Project status: **Public browser SIMULATOR, not production-ready**. Typecheck, 81 unit tests and Chromium actual mouse-gizmo/Undo smoke tested in PR CI. Manual Brave acceptance, calibrated lighting, live Art-Net, hardware patch and Oracle deployment remain future gates.
 
 FLUXCUE aims to combine a compact professional dark UI, interactive 3D LED layout, parameter-driven procedural effects, cues/timeline, and a headless always-on show engine. It will target Oracle Linux ARM64 and optional site-local playback through secure connections to MikroTik routers and Art-Net/sACN controllers.
 
@@ -100,3 +100,6 @@ This public browser preview has been extended with native Three.js XYZ translati
 3. Under fixture geometry, set SMD 3.5/5/8mm, emitter FRONT +Z or DUAL ±Z, and diffuser none/flat/tube. SMD front is directional; DUAL previews opposite rows. The flat opal has a front bias and 3D opal tube draws segments visible around the strip. This is an approximation for previsualization, not guaranteed true 360° photon distribution nor real hardware wiring.
 4. For a cue, select strip(s), set EFFET DIRECT and COULEUR SÉLECTION; the result previews immediately for those strips without triggering live output or affecting other fixtures. Select another strip and set its colour to construct a multicolour cue. Press UPDATE CUE to overwrite the cue you are editing or NEW CUE for a new look. GO explicitly starts the chosen cue layer. Base fixture tint is separate inside geometry.
 5. The public app remains a static, local-storage browser simulator. No live Art-Net, sACN, Oracle, controllers, 360°-accurate raytracing or hardware communication.
+
+## 2026-10-11 Studio simulator expansion (PR #22)
+The public PREVIEW source now has 17 original procedural effect modes (11 additional), 3D material surfaces receiving sampled dynamic LED lighting/shadows, bloom, spatial pixel-position caching and stronger exact-snapshot Undo. A headless Chromium test exercises a real Three gizmo pointer drag and actual Ctrl+Z/redo, alongside 81 Node regression tests. This is not calibrated real-LED photometry or live Art-Net/sACN/Oracle control. See [the 13-project product audit and backlog](docs/AUDIT_STUDIO_PRODUCT_GAPS_2026-10-11.md).

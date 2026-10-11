@@ -245,3 +245,10 @@ input[type=range],input[type=checkbox]{accent-color:#bdbdbd}
 .cue-direct-actions button:first-child{border-color:#9e9e9e}
 .cue-direct-actions button.active{border-color:#b6bdaf;background:#30372c}
 .editor-tools button kbd{margin-left:3px;font-size:8px;color:#909090}
+
+/* Bounded 3D light/shadow controls, compact and neutral. */
+.editor-tools .light-power{width:50px;height:14px;padding:0;margin:0;accent-color:#bdbdbd}
+.editor-tools label{color:#c0c0c0}
+.editor-tools select{background:#242424;color:#ddd;border-color:#484848}
+.viewport-details{font-family:'DM Mono',monospace;font-size:9px;color:#aaa;letter-spacing:.2px}
+@media(max-width:1200px){.editor-tools{gap:5px;padding:4px 8px}.editor-tools button{padding:4px 6px}.editor-tools .light-power{width:38px}}
