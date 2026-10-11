@@ -80,3 +80,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .scene-context-menu button.context-danger{color:#e5a9a8}
 .scene-context-menu kbd{font-size:9px;color:#728fa5;margin-left:18px}
 .context-rule{border-top:1px solid #34495c;margin:5px}
+
+.export-pixel-map{background:transparent;color:#9dc4dc;border:1px solid #394e60;border-radius:3px;padding:7px;margin:0 12px 12px;font-size:9px;font-weight:750;letter-spacing:.6px}
+.export-pixel-map:hover:not(:disabled){background:#253b4d}

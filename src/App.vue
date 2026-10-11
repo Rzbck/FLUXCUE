@@ -6,6 +6,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
 import {chooseSelection, editableFixtures, selectionPivot, transformGroup, scenePixelPosition, spatialWave, spatialBlocks} from './core/spatial-selection.mjs';
 import { describePatch } from './core/patch.mjs';
+import { virtualPixelRows } from './core/pixel-map.mjs';
 import { fadeFactor, blendChannel, advancePreviewClock } from './core/cue-engine.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
@@ -32,6 +33,10 @@ const bulkGroup = ref('STAGE');
 const selectedFixtures = computed(() => fixtures.value.filter(f => selectedIds.value.includes(f.id)));
 const editableCount = computed(() => selectedFixtures.value.filter(f => f.visible && !f.locked).length);
 const selectionCount = computed(() => selectedIds.value.length);
+const pixelFocus = ref(0);
+const focusedPixelIndex = computed(() => Math.min(Math.max(0,Math.floor(pixelFocus.value)||0),sanitizeFixture(current.value).pixels-1));
+const focusedPixel = computed(() => scenePixelPosition(sanitizeFixture(current.value),focusedPixelIndex.value));
+const focusedAddress = computed(() => patch.value.assignments[focusedPixelIndex.value]);
 const current = computed(() => fixtures.value.find(f=>f.id===selectedId.value) ?? fixtures.value[0]);
 const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group?.trim() || 'STAGE'))]);
 const toolMode = ref<ToolMode>('translate');
@@ -471,6 +476,16 @@ function addFixture() {
   selectedId.value=id;selectedIds.value=[id];
   rememberScene(before);
 }
+function exportPixelCsv() {
+  if(totalPixels.value>100000){alert('Pixel export limited to 100,000 virtual LEDs');return;}
+  try {
+    const csv=virtualPixelRows(fixtures.value.map(f=>sanitizeFixture(f)));
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    const anchor=document.createElement('a');
+    anchor.href=url;anchor.download='fluxcue-virtual-3d-pixel-map.csv';
+    anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  } catch(error){alert('Pixel CSV export failed: '+String(error));}
+}
 function saveProject() {
   const data={schemaVersion:'0.1.0',project:{name:'FLUXCUE Demo'},fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
@@ -625,6 +640,7 @@ watch([positionSnap,showGrid],updateGrid);
           <button @click="selectGroup" title="Select active group">GROUP</button>
         </div>
         <button class="add-entity" @click="addFixture">＋ ADD LED STRIP</button>
+        <button class="export-pixel-map" :disabled="totalPixels>100000" @click="exportPixelCsv" title="Download an offline CSV of every LED world position and virtual DMX slots">↓ PIXEL MAP CSV</button>
         <div class="sidebar-bottom">
           <div class="panel-title">OUTPUT PATCH <span class="dim-label">SIM</span></div>
           <div class="metric-row"><span>Pixel count</span><b>{{ totalPixels }}</b></div>
@@ -716,7 +732,12 @@ watch([positionSnap,showGrid],updateGrid);
         <div class="section-label">PATCH INFORMATION</div>
         <div class="metric-row"><span>Channels required</span><b>{{ patch.channels }}</b></div>
         <div class="metric-row"><span>Virtual universes</span><b>{{ patch.universesUsed }}</b></div>
-        <div class="panel-note">Selected fixture uses virtual channel allocation. Real controller mapping is not implemented.</div>
+        <div class="section-label">PIXEL INSPECT / WORLD SPACE</div>
+        <label class="field"><span>Index</span><div class="control"><input type="range" v-model.number="pixelFocus" :max="Math.max(0,sanitizeFixture(current).pixels-1)" min="0" step="1"/><input type="number" class="num" v-model.number="pixelFocus" min="0" :max="Math.max(0,sanitizeFixture(current).pixels-1)" step="1"/></div></label>
+        <div class="metric-row"><span>World XYZ (m)</span><b>{{focusedPixel.x.toFixed(3)}}, {{focusedPixel.y.toFixed(3)}}, {{focusedPixel.z.toFixed(3)}}</b></div>
+        <div class="metric-row"><span>Virtual universe offset</span><b>{{focusedAddress?.universeOffset ?? '—'}}</b></div>
+        <div class="metric-row"><span>Virtual slot (1-512)</span><b>{{focusedAddress?.slot ?? '—'}}</b></div>
+        <div class="panel-note">All pixel coordinates are in meters. The CSV and channel addresses are simulated fixture-local data, not a physical controller patch.</div>
       </aside>
     </div>
     <footer class="status"><span class="live-dot"></span><span>PREVIEW ENGINE</span><span class="separator"></span><span><b>{{ fps||'—' }}</b> FPS</span><span class="separator"></span><span>{{ totalPixels }} PIXELS</span><div class="status-spacer"></div><span>OUTPUT DISABLED</span><span class="separator"></span><span>3D: {{ toolMode.toUpperCase() }} · {{ positionSnap ? positionSnap+'m' : 'FREE' }}</span><span class="separator"></span><span>NO SERVER</span><span class="version">FLUXCUE / V0.1</span></footer>
