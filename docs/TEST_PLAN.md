@@ -112,3 +112,14 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [x] Project title and original auto-demo-group migration tested (pure tests).
 - [ ] Protected final docs PR merge, main CI and Pages deployment.
 - [ ] Real Brave input focus/colour dialog, ctrl-z move/colour/group/cue undo, cue per-fixture colour, group drag/drop and length-only SCALE at two resolutions; NOT RUN.
+
+## v0.2.2 acceptance — PR #21 (2026-10-11)
+- [x] Pure optics + clipboard tests: default 5mm front emitter, flat vs tube and opposed-row choices, correct fixture copy with unique IDs/preserved optics.
+- [x] Pure history test: selecting an object or browsing another cue is not an undo action; geometry movement is.
+- [x] Project store migration/round-trip test for emitter/diffuser/LED SMD size.
+- [x] PR #21 pre-doc CI 38176316520: **75/75 tests**, typecheck, Vite ordinary + Pages builds, source and generated output security scans, Pages asset check PASS.
+- [ ] Final doc-head CI, protected merge, main CI and public Pages deployment.
+- [ ] Real Brave 1920x1080 + 1366x768: Ctrl+C/V within scene, text fields unaffected, correct offsets and Ctrl+Z; gizmo drag followed by Ctrl+Z/redo, repeated times in a row.
+- [ ] Inspect tiny square SMD from front/back; front invisible from rear, dual visible from rear; flat/tube diffuser visual comparison, no giant spheres, 30–144 LED/m density.
+- [ ] Select strip A, direct effect/red; select B/blue; preview A+B; update cue and press GO; no unrelated fixture recoloured; other cue layers remain.
+- [ ] Browser refresh restores optical modes, editable cues and groups. No physical light engine/photometric claims.

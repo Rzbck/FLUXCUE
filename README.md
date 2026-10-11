@@ -93,3 +93,10 @@ This public browser preview has been extended with native Three.js XYZ translati
 - Static, public **SIMULATOR** only, no controller wiring or real output; verify browser gestures manually before calling the workflow stable.
 
 **v0.2.1 workflow:** manual groups and explicit cue target sets with fixture-specific colours, global project undo/redo, length-only SCALE, editable project title, local autosave including unfinished cue drafts. Latest pre-merge PR CI 38172445001 verified 71/71 pure tests; browser interactions still require manual Brave testing.
+
+## Studio optical/clipboard/direct-cue update (2026-10-11; browser smoke pending)
+1. **BACKUP JSON** before updating; reload https://rzbck.github.io/FLUXCUE/ using Ctrl+Shift+R once deployment is confirmed. Existing locally saved scenes should migrate, keeping names/groups/cue information.
+2. In the 3D editor, select one or several LED strips. Ctrl+C copies fixtures **inside this tab**; Ctrl+V pastes offset copies (also context-menu and viewport toolbar). Text input clipboard is independent. Ctrl+Z reverses a completed gizmo drag or paste; Ctrl+Shift+Z/ Ctrl+Y redo. Browser interaction acceptance is pending.
+3. Under fixture geometry, set SMD 3.5/5/8mm, emitter FRONT +Z or DUAL ±Z, and diffuser none/flat/tube. SMD front is directional; DUAL previews opposite rows. The flat opal has a front bias and 3D opal tube draws segments visible around the strip. This is an approximation for previsualization, not guaranteed true 360° photon distribution nor real hardware wiring.
+4. For a cue, select strip(s), set EFFET DIRECT and COULEUR SÉLECTION; the result previews immediately for those strips without triggering live output or affecting other fixtures. Select another strip and set its colour to construct a multicolour cue. Press UPDATE CUE to overwrite the cue you are editing or NEW CUE for a new look. GO explicitly starts the chosen cue layer. Base fixture tint is separate inside geometry.
+5. The public app remains a static, local-storage browser simulator. No live Art-Net, sACN, Oracle, controllers, 360°-accurate raytracing or hardware communication.
