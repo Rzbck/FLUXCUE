@@ -42,3 +42,9 @@ Only a versioned, validated project snapshot is saved to browser localStorage fo
 
 ## D-012 — Concurrent cue layers and hardware fixture presets (2026-10-11)
 Concurrent active cue layers persist until explicit STOP/retrigger or a 12-layer memory bound, composited as ADD (screen blend) or REPLACE. They have independent start time/speed and fixture ID targets. Auto NEXT uses configurable HOLD on browser show clock, not a deterministic server timeline. LED chip family presets are metadata for UI and derived LED count, not actual pixel bus drivers. Numeric meters and density are canonical fixture geometry; imported old count is retained during migration.
+
+## D-013 — Groups are user-owned; strip scale does not move centres (2026-10-11)
+Canonical group names are an explicit project-level array; UNGROUPED is represented by the empty string and cannot be a user-named group. New fixtures and layouts never implicitly create a named group. Deleting a group safely ungroups members; moving/group-renaming are atomic undoable transactions. Legacy snapshots infer names once, preserving custom names, and recognize only the four shipped sample fixtures for one-time demo group cleanup. SCALE changes physical strip length and derived pixel density, not group spacing. Translate/layout are distinct tools.
+
+## D-014 — Cue look authoring and shared undo (2026-10-11)
+Cue editor selection is separate from active GO playback; each cue owns optional validated fixture-ID-to-hex colour overrides, immutable-ish for output until UPDATE/GO. Cue preview is explicit, target-scoped and never a live LED output. Fixture baseline colour is independent of cue colours, so editing a fixture or an in-progress cue cannot silently recolour all fixtures. Shared transaction history catches direct inputs, colours, groups and 3D pointers; native OS colour dialogs have keyboard handling beyond the web application's control. Existing static-only security boundary is unchanged.

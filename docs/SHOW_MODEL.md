@@ -44,3 +44,8 @@ Original pure scenePixelPosition, virtualPixelRows and createFixtureArray functi
 - Fixture metadata: `chip` family, independent positive `density` LED/m, derived `pixels`, per-fixture `tint`, group/visibility/lock. Legacy imported fixture `pixels` retained when density inferred; future edits calculate count from `length * density`.
 - Cue model extension: `hold` for AUTO, `mode` ADD/REPLACE, `targetIds` (empty = all) and `speed`. Runtime `activeLayers` have independent `started`, speed, fade, targets; limited to 12 in public preview. This is NOT the final immutable versioned show schema nor a physical controller cue engine.
 - Browser-local 0.1.0 persistence includes UI collapse and playback fields under same schema for compatibility; validated before applying. No cloud sync, production restoration or authoritative clock guarantees.
+
+## PR #20 explicit editor model (2026-10-11)
+- `groups: string[]` is the user-created named group list, including empty groups. A fixture `group: ''` is ungrouped. No automatic grouping by chip, type, fixture name or generated layout.
+- `cue.looks: {[fixtureId]: '#RRGGBB'}` stores optional different colours per fixture within a single cue. `activeLayer.looks` is copied when GO starts; cue colour remains the fallback for fixtures without custom looks. This does not change physical device patching.
+- Global editor history snapshots contain fixture data, group list, cue data and current editing draft (separate from the show clock). Geometry group scale is length-only, not a spatial scaling of fixture centre positions.

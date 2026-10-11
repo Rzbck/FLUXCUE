@@ -93,3 +93,15 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Run cue A and cue B: A keeps animating under B; speed/fade independent; UPDATE modifies existing cue; AUTO respects HOLD; STOP ALL blackouts view; restart continues previous local simulation.
 - [ ] Stress test 500 fixtures/2,000 pixels each, 12 layers and storage limits; no benchmark claimed until measured.
 - [ ] Actual GitHub Pages deploy source SHA and green main workflow proven after merge; physical fixtures and Oracle not used.
+
+## 2026-10-11 — PR #20 manual regressions
+- [x] Pure scale length-only test: 2 selected strips keep XYZ centres/orientation unchanged and derived pixel counts scale by density.
+- [x] Pure group create/rename/move/delete and legacy project migrations, including original auto STAGE demo fixtures.
+- [x] Pure editor-history multi-step geometry, per-fixture/cue colour and group undo, redo invalidation.
+- [x] Pure per-fixture cue colour lookup: left red/right blue within one cue, no leakage.
+- [ ] **PR #20 final-head green CI + protected merge + Pages deployment**; source CI run 38171981297 green 68/68 was *before* last migration/docs updates.
+- [ ] Brave: CTRL+Z after MOVE (1 drag = 1 undo), ROTATE, SCALE group length (no spacing change), numerical XYZ, fixture colour, new group, rename, membership drag/drop, cue per-fixture colour/UPDATE; Ctrl+Shift+Z redo.
+- [ ] Focusing input still allows app-wide Undo/Redo while typing, after exiting native browser colour dialog. Run at 1920x1080 and 1366x768, and reload to verify persisted groups and cue palette.
+- [ ] Cue edit button does not start/show GO; PREVIEW DRAFT applies only selected (or explicit ALL) fixtures; update cue and GO persists per-fixture looks and preserves other running layers.
+- [ ] Old saved scene auto STAGE/FLOOR fixture groups migrate only for the four known demo fixtures; user-built named legacy groups remain.
+- [ ] No live protocol/backend output.
