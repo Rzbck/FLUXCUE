@@ -1172,7 +1172,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
           <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
           <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
           <button title="Copy selected LED strips (Ctrl+C)" @click="copySelected">⧉ COPY <kbd>Ctrl+C</kbd></button>
-          <button title="Paste copied strips (Ctrl+V)" :disabled="!fixtureClipboard.value.length" @click="pasteSelected">▣ PASTE <kbd>Ctrl+V</kbd></button>
+          <button title="Paste copied strips (Ctrl+V)" :disabled="!fixtureClipboard.length" @click="pasteSelected">▣ PASTE <kbd>Ctrl+V</kbd></button>
         </div>
         <div class="viewport" ref="viewport">
           <div class="viewport-overlay"><b>3D TRANSFORM</b><span>CTRL/SHIFT + CLICK MULTI SELECT · RIGHT CLICK MENU · DRAG GROUP GIZMO</span></div>
@@ -1355,7 +1355,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
       <button @click="toolMode='translate';contextMenu.visible=false">MOVE <kbd>M</kbd></button>
       <button @click="toolMode='rotate';contextMenu.visible=false">ROTATE <kbd>R</kbd></button>
       <button @click="copySelected">COPY <kbd>Ctrl+C</kbd></button>
-      <button @click="pasteSelected" :disabled="!fixtureClipboard.value.length">PASTE <kbd>Ctrl+V</kbd></button>
+      <button @click="pasteSelected" :disabled="!fixtureClipboard.length">PASTE <kbd>Ctrl+V</kbd></button>
       <button @click="addDuplicate">DUPLICATE <kbd>Ctrl+D</kbd></button>
       <button @click="setSelectedVisibility(false)">HIDE</button>
       <button @click="setSelectedVisibility(true)">SHOW</button>
