@@ -51,7 +51,7 @@ jobs:
           npm run build
           npm test
           node scripts/check-public-security.mjs --dist
-      - name: Prepare reproducible static archive + signed-by-digest manifest
+      - name: Prepare reproducible static archive + SHA256 checksum/manifest
         env:
           VERSION: ${{ inputs.version }}
           CI_URL: ${{ steps.verify.outputs.ci_url }}
