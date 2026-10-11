@@ -12,18 +12,19 @@ import { fadeFactor, advancePreviewClock } from './core/cue-engine.mjs';
 import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,scaleSelected} from './core/hardware.mjs';
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
 import {cueAppliesTo,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
+import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
-type SceneSnapshot = { fixtures: Fixture[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; effect:Fx; color:string; speed:number; brightness:number };
+type SceneSnapshot = { fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number };
 type ToolMode = 'translate' | 'rotate' | 'scale';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number };
 type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number};
 const fixtures = ref<Fixture[]>([
-  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
-  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'STAGE',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
-  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'FLOOR',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
+  { id:'s1',name:'STAGE / TOP',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' },
+  { id:'s2',name:'LEFT / VERTICAL',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s3',name:'RIGHT / VERTICAL',pixels:70,length:2.5,x:2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff' },
+  { id:'s4',name:'FLOOR / FRONT',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff' }
 ]);
 const cues = ref<Cue[]>([
   { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35 },
@@ -34,7 +35,10 @@ const cues = ref<Cue[]>([
 const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
 const contextMenu = ref({visible:false,x:0,y:0});
-const bulkGroup = ref('STAGE');
+const groups=ref<string[]>([]);
+const newGroupName=ref('');
+const bulkGroup=ref('');
+const draggedFixtureIds=ref<string[]>([]);
 const layoutType = ref<'ROW X'|'ROW Z'|'RING XY'>('ROW X');
 const layoutCount = ref(6);
 const layoutSpacing = ref(0.6);
@@ -63,7 +67,7 @@ const focusedPixelIndex = computed(() => Math.min(Math.max(0,Math.floor(pixelFoc
 const focusedPixel = computed(() => scenePixelPosition(sanitizeFixture(current.value),focusedPixelIndex.value));
 const focusedAddress = computed(() => patch.value.assignments[focusedPixelIndex.value]);
 const current = computed(() => fixtures.value.find(f=>f.id===selectedId.value) ?? fixtures.value[0]);
-const fixtureGroups = computed(() => [...new Set(fixtures.value.map(f => f.group?.trim() || 'STAGE'))]);
+const fixtureGroups=computed(()=>['',...groups.value]);
 const toolMode = ref<ToolMode>('translate');
 const positionSnap = ref(0.1);
 const angleSnap = ref(15);
@@ -71,7 +75,8 @@ const showGrid = ref(true);
 const undoStack = ref<SceneSnapshot[]>([]);
 const redoStack = ref<SceneSnapshot[]>([]);
 const activeIndex = ref(1);
-const activeCue = computed(() => cues.value[activeIndex.value] ?? cues.value[0]);
+const editIndex=ref(1);
+const activeCue=computed(()=>cues.value[editIndex.value] ?? cues.value[0]);
 const autoplayCountdown = computed(() => autoPlay.value && Number.isFinite(autoNextTime) ? Math.max(0,autoNextTime-showSeconds.value).toFixed(1)+'s' : 'OFF');
 const running = ref(true);
 const effect = ref<Fx>('rainbow');
@@ -96,6 +101,8 @@ let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRe
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
+let historyBaseline:SceneSnapshot|null=null;
+let replaying=false;
 let dragPivot: {x:number,y:number,z:number} | null = null;
 let dragBaseline: Fixture[] = [];
 const raycaster = new THREE.Raycaster();
@@ -129,17 +136,33 @@ function resize() {
   renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 function snapshotScene(): SceneSnapshot {
-  return { fixtures:fixtures.value.map(f=>({...f})),cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds]})),selectedId:selectedId.value,selectedIds:[...selectedIds.value],activeIndex:activeIndex.value,effect:effect.value,color:color.value,speed:speed.value,brightness:brightness.value };
+  return { fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
+    cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds]})),
+    selectedId:selectedId.value,selectedIds:[...selectedIds.value],
+    activeIndex:activeIndex.value,editIndex:editIndex.value,effect:effect.value,
+    color:color.value,speed:speed.value,brightness:brightness.value };
 }
 function rememberScene(previous: SceneSnapshot) {
-  if (sameScene(previous,snapshotScene())) return;
-  undoStack.value=[...undoStack.value.slice(-79),previous];
+  const next=snapshotScene();
+  if (sameScene(previous,next)) {historyBaseline=next;return;}
+  // Central transaction gate. A drag or color-picker gesture creates ONE undo item.
+  const baseline=historyBaseline;
+  undoStack.value=[...undoStack.value.slice(-99),(baseline && !sameScene(baseline,previous)?baseline:previous)];
   redoStack.value=[];
+  historyBaseline=next;
+}
+function recordUntrackedEdits(){
+  if(!hydrated||replaying||transforming||dragStart||editStart)return;
+  const next=snapshotScene();
+  if(!historyBaseline){historyBaseline=next;return;}
+  if(!sameScene(historyBaseline,next))rememberScene(historyBaseline);
 }
 function restoreScene(previous: SceneSnapshot) {
   fixtures.value=previous.fixtures.map(f=>({...f}));
+  groups.value=[...previous.groups];
   cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds]}));
   activeIndex.value=Math.max(0,Math.min(previous.activeIndex,cues.value.length-1));
+  editIndex.value=Math.max(0,Math.min(previous.editIndex,cues.value.length-1));
   effect.value=previous.effect;color.value=previous.color;speed.value=previous.speed;brightness.value=previous.brightness;
   selectedId.value=fixtures.value.some(f=>f.id===previous.selectedId) ? previous.selectedId : fixtures.value[0].id;
   selectedIds.value=previous.selectedIds?.filter(id=>fixtures.value.some(f=>f.id===id)) || [selectedId.value];
@@ -147,24 +170,43 @@ function restoreScene(previous: SceneSnapshot) {
   // Scene undo changes geometry/data only; never stop a running cue.
   syncTransform();
 }
-function undoEdit() {
+function undoEdit(){
+  if(dragStart)finishTransformDrag();
+  commitEdit();
+  recordUntrackedEdits();
   const previous=undoStack.value.pop();
-  if (!previous) return;
+  if(!previous)return;
+  replaying=true;
   redoStack.value.push(snapshotScene());
   restoreScene(previous);
+  historyBaseline=snapshotScene();
+  nextTick(()=>{replaying=false;});
 }
-function redoEdit() {
+function redoEdit(){
+  if(dragStart)finishTransformDrag();
+  commitEdit();
+  recordUntrackedEdits();
   const next=redoStack.value.pop();
-  if (!next) return;
+  if(!next)return;
+  replaying=true;
   undoStack.value.push(snapshotScene());
   restoreScene(next);
+  historyBaseline=snapshotScene();
+  nextTick(()=>{replaying=false;});
 }
 function beginEdit() {
   if (!editStart) editStart=snapshotScene();
 }
-function commitEdit() {
-  if (editStart) rememberScene(editStart);
+function commitEdit(){
+  if(editStart)rememberScene(editStart);
   editStart=null;
+}
+function onFieldFocus(event:FocusEvent){
+  if(!(event.target instanceof HTMLElement))return;
+  if(event.target.matches('input,select,textarea'))beginEdit();
+}
+function onFieldBlur(event:FocusEvent){
+  if(event.target instanceof HTMLElement && event.target.matches('input,select,textarea'))commitEdit();
 }
 function normalizeCurrent() {
   const clean=sanitizeFixture(current.value);
@@ -195,31 +237,77 @@ function changeDensity(event:Event){
 }
 function paintSelection(event:Event){
   const c=(event.target as HTMLInputElement).value;
-  if(!/^#[a-f0-9]{6}$/i.test(c))return;
+  if(!/^#[a-f0-9]{6}$/i.test(c)||current.value.locked)return;
   beginEdit();
-  for(const f of selectedFixtures.value)if(!f.locked)f.tint=c;
+  // Editing the active fixture NEVER recolors the rest of the selection.
+  current.value.tint=c;
   selectedTint.value=c;
+}
+function tintSelectedExplicitly(){
+  const before=snapshotScene();
+  for(const f of selectedFixtures.value)if(!f.locked)f.tint=current.value.tint;
+  rememberScene(before);
 }
 function toggleGroup(name:string){
   collapsedGroups.value=collapsedGroups.value.includes(name)?collapsedGroups.value.filter(x=>x!==name):[...collapsedGroups.value,name];
 }
 function collapseAllGroups(){collapsedGroups.value=[...fixtureGroups.value];}
 function expandAllGroups(){collapsedGroups.value=[];}
+function createGroup(){
+  try{
+    const before=snapshotScene();
+    groups.value=createNamedGroup(groups.value,newGroupName.value);
+    bulkGroup.value=groups.value.at(-1)||'';
+    newGroupName.value='';
+    rememberScene(before);
+  }catch{alert('Give the group a unique name (up to 40 characters).');}
+}
 function startGroupRename(name:string){editingGroup.value=name;groupNameDraft.value=name;}
 function commitGroupRename(){
   const old=editingGroup.value;editingGroup.value=null;
-  const name=groupNameDraft.value.trim().slice(0,40);
-  if(!old||!name||name===old)return;
+  if(!old)return;
+  try{
+    const before=snapshotScene();
+    const updated=renameNamedGroup(groups.value,fixtures.value,old,groupNameDraft.value);
+    fixtures.value=updated.fixtures as Fixture[];
+    groups.value=updated.groups;
+    collapsedGroups.value=collapsedGroups.value.map(x=>x===old?groupNameDraft.value.trim():x);
+    if(bulkGroup.value===old)bulkGroup.value=groupNameDraft.value.trim();
+    rememberScene(before);
+  }catch{alert('Invalid or duplicate group name.');}
+}
+function removeGroup(name:string){
+  if(!confirm('Delete group "'+name+'"? LED fixtures will become UNGROUPED.'))return;
   const before=snapshotScene();
-  for(const f of fixtures.value)if(f.group===old)f.group=name;
-  collapsedGroups.value=collapsedGroups.value.filter(x=>x!==old);
+  const result=removeNamedGroup(groups.value,fixtures.value,name);
+  fixtures.value=result.fixtures as Fixture[];
+  groups.value=result.groups;
+  if(bulkGroup.value===name)bulkGroup.value='';
   rememberScene(before);
+}
+function moveFixturesToGroup(target:string,ids=selectedIds.value){
+  try{
+    const before=snapshotScene();
+    fixtures.value=moveToGroup(fixtures.value,ids,target,groups.value) as Fixture[];
+    bulkGroup.value=target;
+    rememberScene(before);
+  }catch{alert('Create the group first.');}
+}
+function startFixtureDrag(event:DragEvent,id:string){
+  draggedFixtureIds.value=selectedIds.value.includes(id)?[...selectedIds.value]:[id];
+  if(event.dataTransfer){event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain','FLUXCUE_FIXTURES');}
+}
+function dropOnGroup(event:DragEvent,target:string){
+  event.preventDefault();
+  if(!draggedFixtureIds.value.length)return;
+  moveFixturesToGroup(target,draggedFixtureIds.value);
+  draggedFixtureIds.value=[];
 }
 function togglePanel(name:keyof typeof collapsedPanels.value){
   collapsedPanels.value[name]=!collapsedPanels.value[name];
 }
 function serializableProject(){
-  return {fixtures:fixtures.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
+  return {fixtures:fixtures.value,groups:groups.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
     autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,collapsedPanels:collapsedPanels.value,
     activeLayers:activeLayers.value,showTime,running:running.value,blackout:blackout.value};
 }
@@ -242,9 +330,10 @@ function restoreLocal(){
     if(!raw)return;
     const parsed=parseStudioProject(raw);
     fixtures.value=parsed.fixtures as Fixture[];
+    groups.value=parsed.groups;
     cues.value=parsed.cues as Cue[];
     selectedId.value=parsed.selectedId;selectedIds.value=parsed.selectedIds;
-    activeIndex.value=parsed.activeIndex;
+    activeIndex.value=parsed.activeIndex;editIndex.value=parsed.activeIndex;
     collapsedGroups.value=parsed.collapsedGroups;
     Object.assign(collapsedPanels.value,parsed.collapsedPanels);
     autoPlay.value=parsed.autoPlay;
@@ -399,7 +488,7 @@ function setView(view: 'ISO'|'FRONT'|'TOP'|'RIGHT') {
   camera.lookAt(target);controls.update();
 }
 function orderedFixtureIds(){
-  return fixtureGroups.value.flatMap(g => fixtures.value.filter(f => (f.group?.trim() || 'STAGE')===g).map(f=>f.id));
+  return fixtureGroups.value.flatMap(g=>fixtures.value.filter(f=>(f.group||'')===g).map(f=>f.id));
 }
 function selectFixture(id:string,toggle=false,range=false) {
   contextMenu.value.visible=false;
@@ -480,12 +569,9 @@ function setSelectedLock(value:boolean) {
   rememberScene(before);contextMenu.value.visible=false;
 }
 function toggleSelectedLock() {setSelectedLock(!current.value.locked);}
-function applyBulkGroup() {
-  const group=bulkGroup.value.trim().slice(0,40);
-  if(!group)return;
-  const before=snapshotScene();
-  for(const f of selectedFixtures.value)if(!f.locked)f.group=group;
-  rememberScene(before);contextMenu.value.visible=false;
+function applyBulkGroup(){
+  moveFixturesToGroup(bulkGroup.value);
+  contextMenu.value.visible=false;
 }
 function alignSelected(axis:'x'|'y'|'z') {
   if(selectedFixtures.value.length<2)return;
@@ -640,7 +726,7 @@ function addFixture() {
   const before=snapshotScene();
   const i=fixtures.value.length+1;
   const id='s'+crypto.randomUUID();
-  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:current.value.group,visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff'});
+  fixtures.value.push({id,name:'STRIP / '+String(i).padStart(2,'0'),pixels:120,length:2,x:0,y:1.2,z:i*0.28,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:60,tint:'#ffffff'});
   selectedId.value=id;selectedIds.value=[id];
   rememberScene(before);
 }
@@ -690,11 +776,15 @@ function finishTransformDrag(){
 }
 function onKey(e: KeyboardEvent) {
   const target=e.target as HTMLElement|null;
+  if(e.ctrlKey||e.metaKey) {
+    // Global undo/redo wins even while a colour picker, numeric field or cue
+    // title has keyboard focus. Commit its in-flight transaction first.
+    if(e.code==='KeyZ'){e.preventDefault();e.stopPropagation();e.shiftKey?redoEdit():undoEdit();return;}
+    if(e.code==='KeyY'){e.preventDefault();e.stopPropagation();redoEdit();return;}
+  }
   if (!target || ['INPUT','TEXTAREA','SELECT'].includes(target.tagName)||target.isContentEditable)return;
   if (e.ctrlKey||e.metaKey) {
-    if (e.code==='KeyZ'){e.preventDefault();e.shiftKey?redoEdit():undoEdit();}
-    else if (e.code==='KeyY'){e.preventDefault();redoEdit();}
-    else if (e.code==='KeyS'){e.preventDefault();saveProject();}
+    if (e.code==='KeyS'){e.preventDefault();saveProject();}
     else if (e.code==='KeyA'){e.preventDefault();selectAll();}
     else if (e.code==='KeyD'){e.preventDefault();addDuplicate();}
     return;
@@ -714,7 +804,9 @@ function onKey(e: KeyboardEvent) {
   if (e.code==='Delete'){e.preventDefault();deleteFixture();}
 }
 onMounted(()=>{
-  restoreLocal();hydrated=true;
+  restoreLocal();hydrated=true;historyBaseline=snapshotScene();
+  document.addEventListener('focusin',onFieldFocus,true);
+  document.addEventListener('focusout',onFieldBlur,true);
   scene=new THREE.Scene();scene.background=new THREE.Color('#070707');
   camera=new THREE.PerspectiveCamera(48,1,0.02,1000);camera.position.set(7,4.7,8);
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -771,6 +863,8 @@ onMounted(()=>{
 });
 onUnmounted(()=>{
   persistLocal();
+  document.removeEventListener('focusin',onFieldFocus,true);
+  document.removeEventListener('focusout',onFieldBlur,true);
   if(saveTimer)clearTimeout(saveTimer);
   cancelAnimationFrame(raf);sizeObserver?.disconnect();window.removeEventListener('keydown',onKey);
   window.removeEventListener('beforeunload',persistLocal);
@@ -790,7 +884,11 @@ watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.vi
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
-watch([fixtures,cues,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,activeLayers,running,blackout],scheduleSave,{deep:true});
+watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,activeLayers,running,blackout],scheduleSave,{deep:true});
+// Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
+// Flush after the event so one user operation produces one history item.
+watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness],
+  recordUntrackedEdits,{deep:true,flush:'post'});
 </script>
 
 <template>
