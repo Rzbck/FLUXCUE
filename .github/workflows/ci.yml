@@ -8,16 +8,29 @@ permissions:
   contents: read
 jobs:
   studio:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out (no persisted credentials)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - name: Install
-        run: npm install --no-audit --no-fund
+      - name: Generate bootstrap lockfile without package scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Validate locked install
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Typecheck and build
         run: npm run build
       - name: Unit tests
         run: npm test
+      - name: Upload lockfile for explicit review and commit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fluxcue-lockfile-bootstrap
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
