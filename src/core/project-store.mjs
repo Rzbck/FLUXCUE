@@ -64,9 +64,23 @@ export function parseStudioProject(json){
   :fixtures.map(f=>f.group).filter(Boolean);
  const distinctGroups=[...new Set(groups)];
  for(const f of fixtures)if(f.group && !distinctGroups.includes(f.group)) f.group='';
+ const draftIndex=Number.isInteger(d.editorDraft?.cueIndex)?
+  Math.max(0,Math.min(cues.length-1,d.editorDraft.cueIndex)):
+  (Number.isInteger(d.activeIndex)?Math.max(0,Math.min(cues.length-1,d.activeIndex)):0);
+ const draftCue=cues[draftIndex];
+ const draft=d.editorDraft&&typeof d.editorDraft==='object'&&!Array.isArray(d.editorDraft)?d.editorDraft:{};
+ const draftLooks=Object.fromEntries(Object.entries(draft.looks&&typeof draft.looks==='object'&&!Array.isArray(draft.looks)?draft.looks:draftCue.looks)
+   .filter(([id,value])=>ids.has(id)&&hex(value)).slice(0,500));
+ const editorDraft={cueIndex:draftIndex,
+   effect:effects.has(draft.effect)?draft.effect:draftCue.effect,
+   color:hex(draft.color)?draft.color:draftCue.color,
+   speed:finite(draft.speed,0,3)?draft.speed:draftCue.speed,
+   targetMode:draft.targetMode==='ALL'||(!draft.targetMode&&!draftCue.targetIds.length)?'ALL':'SELECTION',
+   targetIds:Array.isArray(draft.targetIds)?[...new Set(draft.targetIds.filter(id=>ids.has(id)))].slice(0,500):[...draftCue.targetIds],
+   looks:draftLooks};
  const selectedId=typeof d.selectedId==='string'&&ids.has(d.selectedId)?d.selectedId:fixtures[0].id;
  const selectedIds=Array.isArray(d.selectedIds)?d.selectedIds.filter(id=>ids.has(id)).slice(0,500):[selectedId];
- return {fixtures,cues,groups:distinctGroups,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
+ return {fixtures,cues,groups:distinctGroups,editorDraft,selectedId,selectedIds:selectedIds.length?selectedIds:[selectedId],
   activeIndex:Number.isInteger(d.activeIndex)?Math.max(0,Math.min(cues.length-1,d.activeIndex)):0,
   collapsedGroups:Array.isArray(d.collapsedGroups)?d.collapsedGroups.filter(s=>typeof s==='string').slice(0,100):[],
   collapsedPanels:Object.fromEntries(['scene','arrays','patch','cues','geometry','effects','pixel'].map(k=>[k,d.collapsedPanels?.[k]===true])),

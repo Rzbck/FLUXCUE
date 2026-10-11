@@ -51,3 +51,15 @@ test('old automatic STAGE/FLOOR demo fixtures migrate to UNGROUPED',()=>{
  assert.deepEqual(result.groups,[]);
  assert.ok(result.fixtures.every(f=>f.group===''));
 });
+
+test('uncommitted cue look draft and multiple target fixtures survive autosave',()=>{
+ const second={...fixture,id:'s2'};
+ const s=stringifyStudioProject({fixtures:[fixture,second],cues:[cue],
+  editorDraft:{cueIndex:0,targetMode:'SELECTION',targetIds:['s1','s2'],looks:{s1:'#ff0000',s2:'#0000ff'},
+    effect:'solid',color:'#ffffff',speed:.9}});
+ const p=parseStudioProject(s);
+ assert.deepEqual(p.editorDraft.targetIds,['s1','s2']);
+ assert.equal(p.editorDraft.looks.s1,'#ff0000');
+ assert.equal(p.editorDraft.looks.s2,'#0000ff');
+ assert.equal(p.editorDraft.effect,'solid');
+});

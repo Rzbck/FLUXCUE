@@ -17,7 +17,7 @@ import {commitHistory,stepHistory} from './core/editor-history.mjs';
 
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string };
-type SceneSnapshot = { fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string> };
+type SceneSnapshot = { fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
 type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
 type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>};
@@ -55,6 +55,7 @@ const layerBudget=12;
 const selectedTint=ref('#ffffff');
 const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
 const cueDraftColors=ref<Record<string,string>>({});
+const cueTargetIdsDraft=ref<string[]>([]);
 const cuePreview=ref(false);
 const activeCueFixtureColor=computed(()=>cueDraftColors.value[current.value.id]||color.value);
 const runningCueIds=computed(()=>new Set(activeLayers.value.map(l=>l.cueId)));
@@ -144,7 +145,8 @@ function snapshotScene(): SceneSnapshot {
     cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}})),
     selectedId:selectedId.value,selectedIds:[...selectedIds.value],
     activeIndex:activeIndex.value,editIndex:editIndex.value,effect:effect.value,
-    color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value} };
+    color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},
+    cueTargetMode:cueTargetMode.value,cueTargetIdsDraft:[...cueTargetIdsDraft.value] };
 }
 function rememberScene(previous: SceneSnapshot) {
   const next=snapshotScene();
@@ -166,6 +168,8 @@ function restoreScene(previous: SceneSnapshot) {
   groups.value=[...previous.groups];
   cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}}));
   cueDraftColors.value={...previous.cueDraftColors};
+  cueTargetMode.value=previous.cueTargetMode;
+  cueTargetIdsDraft.value=[...previous.cueTargetIdsDraft];
   // When undoing an updated cue, running layers must show the restored look too.
   for(const layer of activeLayers.value){
     const cue=cues.value.find(c=>c.id===layer.cueId);
@@ -263,12 +267,16 @@ function paintCueFixtureDraft(event:Event){
   if(!/^#[0-9a-f]{6}$/i.test(value))return;
   beginEdit();
   cueDraftColors.value={...cueDraftColors.value,[current.value.id]:value};
+  if(cueTargetMode.value==='SELECTION'){
+    cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,current.value.id])];
+  }
 }
 function applyCueColorToSelection(){
   const before=snapshotScene(),value=activeCueFixtureColor.value;
   const next={...cueDraftColors.value};
   for(const f of selectedFixtures.value)next[f.id]=value;
   cueDraftColors.value=next;
+  if(cueTargetMode.value==='SELECTION')cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,...selectedIds.value])];
   rememberScene(before);
 }
 function clearCueFixtureOverrides(){
@@ -337,6 +345,8 @@ function togglePanel(name:keyof typeof collapsedPanels.value){
 function serializableProject(){
   return {fixtures:fixtures.value,groups:groups.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
     autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,collapsedPanels:collapsedPanels.value,
+    editorDraft:{cueIndex:editIndex.value,effect:effect.value,color:color.value,speed:speed.value,
+      targetMode:cueTargetMode.value,targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value},
     activeLayers:activeLayers.value,showTime,running:running.value,blackout:blackout.value};
 }
 function persistLocal(){
@@ -361,7 +371,7 @@ function restoreLocal(){
     groups.value=parsed.groups;
     cues.value=parsed.cues as Cue[];
     selectedId.value=parsed.selectedId;selectedIds.value=parsed.selectedIds;
-    activeIndex.value=parsed.activeIndex;editIndex.value=parsed.activeIndex;
+    activeIndex.value=parsed.activeIndex;editIndex.value=parsed.editorDraft.cueIndex;
     collapsedGroups.value=parsed.collapsedGroups;
     Object.assign(collapsedPanels.value,parsed.collapsedPanels);
     autoPlay.value=parsed.autoPlay;
@@ -370,9 +380,10 @@ function restoreLocal(){
     showTime=parsed.showTime;showSeconds.value=parsed.showTime;
     running.value=parsed.running;blackout.value=parsed.blackout;
     autoNextTime=autoPlay.value?cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5):Infinity;
-    effect.value=cues.value[activeIndex.value]?.effect||'solid';
-    color.value=cues.value[activeIndex.value]?.color||'#ffffff';
-    cueDraftColors.value={...cues.value[editIndex.value]?.looks};
+    effect.value=parsed.editorDraft.effect;color.value=parsed.editorDraft.color;speed.value=parsed.editorDraft.speed;
+    cueDraftColors.value={...parsed.editorDraft.looks};
+    cueTargetMode.value=parsed.editorDraft.targetMode;
+    cueTargetIdsDraft.value=[...parsed.editorDraft.targetIds];
     saveState.value='RECOVERED';
   }catch{saveState.value='ERROR'; /* Preserve corrupt local bytes for backup/manual recovery. */ }
 }
@@ -646,7 +657,7 @@ function sampleFx(mode: Fx, hex: string, index: number, count: number, t: number
   return result.set(hex).lerp(gradientEnd,(Math.sin(p*Math.PI*2-t*cueSpeed*1.5)+1)/2);
 }
 function sampleCurrentPixel(f: Fixture, index: number, count: number, time: number, output: THREE.Color): THREE.Color {
-  if(cuePreview.value && (cueTargetMode.value==='ALL'||selectedIds.value.includes(f.id))){
+  if(cuePreview.value && (cueTargetMode.value==='ALL'||(cueTargetIdsDraft.value.length?cueTargetIdsDraft.value.includes(f.id):selectedIds.value.includes(f.id)))){
     // Explicit edit-preview overrides only the chosen cue target fixtures.
     // It never changes saved cues, other pixels or actual playback layers.
     return sampleFx(effect.value,cueDraftColors.value[f.id]||color.value,
@@ -700,6 +711,7 @@ function editCue(index:number){
   effect.value=c.effect;color.value=c.color;speed.value=c.speed;
   cueTargetMode.value=c.targetIds.length?'SELECTION':'ALL';
   cueDraftColors.value={...c.looks};
+  cueTargetIdsDraft.value=[...c.targetIds];
   if(c.targetIds.length){
     const ids=c.targetIds.filter(id=>fixtures.value.some(f=>f.id===id));
     if(ids.length){selectedIds.value=ids;selectedId.value=ids[0];}
@@ -730,7 +742,28 @@ function toggleAutoPlay(){
     if(!activeLayers.value.length && cues.value.length)applyCue(activeIndex.value);
   }
 }
-function captureCueTargets(){return cueTargetMode.value==='ALL'?[]:[...selectedIds.value];}
+function captureCueTargets(){
+  if(cueTargetMode.value==='ALL')return [];
+  // The explicit list survives selecting the NEXT fixture while composing
+  // a single multi-colour cue, instead of silently targeting only the last one.
+  const ids=cueTargetIdsDraft.value.filter(id=>fixtures.value.some(f=>f.id===id));
+  return ids.length?[...new Set(ids)]:[...selectedIds.value];
+}
+function addSelectedCueTargets(){
+  const before=snapshotScene();
+  cueTargetMode.value='SELECTION';
+  cueTargetIdsDraft.value=[...new Set([...cueTargetIdsDraft.value,...selectedIds.value])];
+  rememberScene(before);
+}
+function removeSelectedCueTargets(){
+  const before=snapshotScene();
+  const remove=new Set(selectedIds.value);
+  cueTargetIdsDraft.value=cueTargetIdsDraft.value.filter(id=>!remove.has(id));
+  const looks={...cueDraftColors.value};
+  for(const id of remove)delete looks[id];
+  cueDraftColors.value=looks;
+  rememberScene(before);
+}
 function addCue(){
   if(cues.value.length>=3000)return;
   const before=snapshotScene();
@@ -817,14 +850,15 @@ function loadProject(event:Event){
     fixtures.value=p.fixtures as Fixture[];
     cues.value=p.cues as Cue[];
     selectedId.value=p.selectedId;selectedIds.value=p.selectedIds;
-    activeIndex.value=p.activeIndex;editIndex.value=p.activeIndex;groups.value=p.groups;collapsedGroups.value=p.collapsedGroups;
+    activeIndex.value=p.activeIndex;editIndex.value=p.editorDraft.cueIndex;groups.value=p.groups;collapsedGroups.value=p.collapsedGroups;
     Object.assign(collapsedPanels.value,p.collapsedPanels);
     speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
     activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;blackout.value=false;
     undoStack.value=[];redoStack.value=[];editStart=null;
-    effect.value=cues.value[activeIndex.value]?.effect || 'solid';
-    color.value=cues.value[activeIndex.value]?.color || '#ffffff';
-    cueDraftColors.value={...cues.value[editIndex.value]?.looks};
+    effect.value=p.editorDraft.effect;color.value=p.editorDraft.color;speed.value=p.editorDraft.speed;
+    cueDraftColors.value={...p.editorDraft.looks};
+    cueTargetMode.value=p.editorDraft.targetMode;
+    cueTargetIdsDraft.value=[...p.editorDraft.targetIds];
     scheduleSave();
   }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
 }
@@ -945,10 +979,10 @@ watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.vi
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
-watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,activeLayers,running,blackout],scheduleSave,{deep:true});
+watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,activeLayers,running,blackout],scheduleSave,{deep:true});
 // Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
 // Flush after the event so one user operation produces one history item.
-watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueDraftColors],
+watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors],
   recordUntrackedEdits,{deep:true,flush:'post'});
 </script>
 
@@ -1077,8 +1111,11 @@ watch([fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,
               <button class="cue-edit-button danger" :disabled="cues.length<2" @click="removeActiveCue">✕</button>
             </div>
             <div class="cue-actions">
-              <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">SELECTED FIXTURES</option><option value="ALL">ALL FIXTURES</option></select></label>
-              <span class="cue-hint">EDIT FX/COLOUR IN INSPECTOR → SELECT TARGET → UPDATE (NO GO)</span>
+              <label>TARGET <select v-model="cueTargetMode"><option value="SELECTION">CUSTOM TARGETS</option><option value="ALL">ALL FIXTURES</option></select></label>
+              <span v-if="cueTargetMode==='SELECTION'" class="cue-target-count">{{captureCueTargets().length}} STRIPS</span>
+              <button class="cue-preview-button" @click="addSelectedCueTargets" title="Add current selection to the cue's targets">＋ TARGETS</button>
+              <button class="cue-preview-button" @click="removeSelectedCueTargets" title="Remove selected fixtures from cue's targets and overrides">− TARGETS</button>
+              <span class="cue-hint">BUILD LOOK PER STRIP → UPDATE / NEW</span>
               <button class="cue-preview-button" :class="{active:cuePreview}" @click="cuePreview=!cuePreview">{{cuePreview?'◉ PREVIEW ON':'◯ PREVIEW DRAFT'}}</button>
               <button class="cue-update" @click="updateCue" title="Save edited cue without starting or stopping other cues">↻ UPDATE SELECTED CUE</button>
               <button class="cue-new" @click="addCue">＋ SAVE AS NEW CUE</button>
