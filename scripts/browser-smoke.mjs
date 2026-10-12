@@ -168,7 +168,17 @@ try{
  const redoneCue=await evaluate('window.__FLUXCUE_SMOKE__.cueState()');
  assert.equal(redoneCue.cueEffects.s1,'fire','Redo did not restore saved cue effect');
  assert.equal(redoneCue.cueEffects.s2,'plasma');
- console.log('CUE EDITOR PASS: two independent effects and colours, UPDATE, Ctrl+Z and redo');
+ const cueIndex=redoneCue.editIndex;
+ const wentLive=await evaluate(`(()=>{const go=document.querySelectorAll('.cue-go')[${cueIndex}];if(!go)return false;go.click();return true})()`);
+ assert.equal(wentLive,true,'GO button is missing');
+ await delay(120);
+ const layer=await evaluate('window.__FLUXCUE_SMOKE__.runningLayers().at(-1)');
+ assert.equal(layer.fixtureEffects.s1,'fire','GO ignored stored fixture A effect');
+ assert.equal(layer.fixtureEffects.s2,'plasma','GO ignored stored fixture B effect');
+ assert.equal(layer.looks.s1,'#ff0000');
+ assert.equal(layer.looks.s2,'#0000ff');
+ assert.equal(layer.fixtureEffects.s3,undefined,'GO recoloured an unrelated fixture');
+ console.log('CUE EDITOR PASS: two independent effects and colours, UPDATE, Ctrl+Z/redo and GO composition');
  assert.ok(await evaluate("document.querySelectorAll('select option[value=\"spatial-ripple\"]').length===1"),'Advanced effect menu missing');
  assert.ok(await evaluate("document.querySelectorAll('.viewport canvas').length===1"),'3D editor canvas missing');
  console.log('BROWSER PASS: Chromium WebGL Vue mounted, 3 synthetic gizmo drags with real keyboard Ctrl+Z/redo, 11 FX menu');

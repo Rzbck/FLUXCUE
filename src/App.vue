@@ -1180,6 +1180,10 @@ onMounted(()=>{
         targetIds:[...cueTargetIdsDraft.value],
         cueEffects:{...activeCue.value.fixtureEffects},cueColours:{...activeCue.value.looks},
         cueTargetIds:[...activeCue.value.targetIds]}),
+      runningLayers:()=>activeLayers.value.map(l=>({
+        cueId:l.cueId,effect:l.effect,color:l.color,targetIds:[...l.targetIds],
+        fixtureEffects:{...l.fixtureEffects},looks:{...l.looks}
+      })),
       pointerCandidates:()=>{
         scene.updateMatrixWorld(true);
         const picker=(transform as unknown as {_gizmo?:{picker?:{translate?:THREE.Group}}})._gizmo?.picker?.translate;
