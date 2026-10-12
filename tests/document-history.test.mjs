@@ -45,3 +45,11 @@ test('untracked legacy numeric input is observed exactly once',()=>{
   assert.equal(h.observe(b),false);assert.equal(h.depth,1);
   assert.equal(h.undo(b).fixtures[0].x,0);
 });
+
+test('switching the cue inspector skips phantom undo while preserving prior edits',()=>{
+ const h=createDocumentHistory(),a=doc(),b=doc(4);
+ h.reset(a);h.push(a,b,'Move fixture');
+ h.navigate({...b,selectedId:'another',editIndex:2,cues:[{id:'other',fixtureEffects:{},looks:{}}]});
+ assert.equal(h.depth,1);
+ assert.equal(h.undo(b).fixtures[0].x,0);
+});

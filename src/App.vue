@@ -863,16 +863,17 @@ function frame(now:number){
 function editCue(index:number){
   if(index<0||index>=cues.value.length)return;
   editIndex.value=index;
-  const c=cues.value[index];
-  effect.value=c.effect;color.value=c.color;speed.value=c.speed;
-  cueTargetMode.value=c.targetIds.length?'SELECTION':'ALL';
-  cueDraftColors.value={...c.looks};
-  cueDraftEffects.value={...c.fixtureEffects};
-  cueTargetIdsDraft.value=[...c.targetIds];
+  const c=cues.value[index],draft=initialCueDraft(c);
+  effect.value=draft.effect;color.value=draft.color;speed.value=draft.speed;
+  cueTargetMode.value=draft.targetMode;
+  cueDraftColors.value=draft.looks;
+  cueDraftEffects.value=draft.fixtureEffects as Record<string,Fx>;
+  cueTargetIdsDraft.value=draft.targetIds;
   if(c.targetIds.length){
     const ids=c.targetIds.filter(id=>fixtures.value.some(f=>f.id===id));
     if(ids.length){selectedIds.value=ids;selectedId.value=ids[0];}
   }
+  history.navigate(snapshotScene());refreshHistoryUI();
 }
 function applyCue(index:number){
   if(index<0||index>=cues.value.length)return;
@@ -921,15 +922,17 @@ function removeSelectedCueTargets(){
   cueDraftColors.value=looks;cueDraftEffects.value=fx;
   rememberScene(before);
 }
+function currentCueDraft(){
+  return {effect:effect.value,color:color.value,speed:speed.value,
+    targetMode:cueTargetMode.value,targetIds:captureCueTargets(),
+    looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value};
+}
 function addCue(){
   if(cues.value.length>=3000)return;
   const before=snapshotScene();
   const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
     effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value,looks:{},fixtureEffects:{}};
-  const draft={effect:effect.value,color:color.value,speed:speed.value,
-    targetMode:cueTargetMode.value,targetIds:captureCueTargets(),
-    looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value};
-  const clean=finishCueDraft(c,draft,fixtures.value.map(f=>f.id)) as Cue;
+  const clean=finishCueDraft(c,currentCueDraft(),fixtures.value.map(f=>f.id)) as Cue;
   cues.value.push(clean);editIndex.value=cues.value.length-1;
   rememberScene(before);
 }
@@ -943,11 +946,7 @@ function normalizeCue(){
 function updateCue(){
   const c=activeCue.value;if(!c)return;
   const before=snapshotScene();
-  const drafted=finishCueDraft(c,{
-    effect:effect.value,color:color.value,speed:speed.value,
-    targetMode:cueTargetMode.value,targetIds:captureCueTargets(),
-    looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value
-  },fixtures.value.map(f=>f.id)) as Cue;
+  const drafted=finishCueDraft(c,currentCueDraft(),fixtures.value.map(f=>f.id)) as Cue;
   Object.assign(c,drafted);
   for(const layer of activeLayers.value)if(layer.cueId===c.id){
     layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;layer.speed=c.speed;

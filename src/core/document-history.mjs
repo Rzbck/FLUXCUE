@@ -37,6 +37,12 @@ export function createDocumentHistory({capacity=80}={}){
       if(pending)this.commit(before);
       return checkpoint(before,after,description);
     },
+    navigate(state){
+      // Browsing another cue must not become a phantom Undo, even though
+      // the inspector's draft inputs change to reflect the selected cue.
+      if(pending)this.commit(state);
+      baseline=deepCopy(state);
+    },
     observe(state){
       if(pending)return false;
       if(!baseline){baseline=deepCopy(state);return false;}
