@@ -1245,10 +1245,9 @@ watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
 watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,cueDraftEffects,activeLayers,running,blackout],scheduleSave,{deep:true});
-// Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
-// Flush after the event so one user operation produces one history item.
-watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors,cueDraftEffects],
-  recordUntrackedEdits,{deep:true,flush:'post'});
+// No deep-watcher history guessing. Every edit is an explicit transaction:
+// fields: focusin → change/blur; tools: command before/after; 3D: down → up.
+// Passive observation is deliberately limited to the Undo safety boundary.
 </script>
 
 <template>
