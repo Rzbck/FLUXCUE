@@ -865,7 +865,7 @@ function editCue(index:number){
   editIndex.value=index;
   const c=cues.value[index],draft=initialCueDraft(c);
   effect.value=draft.effect;color.value=draft.color;speed.value=draft.speed;
-  cueTargetMode.value=draft.targetMode;
+  cueTargetMode.value=draft.targetMode as 'ALL'|'SELECTION';
   cueDraftColors.value=draft.looks;
   cueDraftEffects.value=draft.fixtureEffects as Record<string,Fx>;
   cueTargetIdsDraft.value=draft.targetIds;
