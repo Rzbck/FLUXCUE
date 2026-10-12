@@ -18,7 +18,7 @@ import {parseStudioProject,stringifyStudioProject} from './core/project-store.mj
 import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
 import {createDocumentHistory} from './core/document-history.mjs';
-import {initialCueDraft,assignFixtureLook,finishCueDraft,cueEffectForFixture,cueColourForFixture} from './core/cue-authoring.mjs';
+import {initialCueDraft,assignFixtureEffect,assignFixtureColour,finishCueDraft,cueEffectForFixture,cueColourForFixture} from './core/cue-authoring.mjs';
 import {DIFFUSERS,EMITTERS,optics,copyFixtures} from './core/led-optics.mjs';
 import {ADVANCED_EFFECTS,effectSample} from './core/effects.mjs';
 import {lightSamples} from './core/lighting.mjs';
@@ -313,11 +313,25 @@ function paintCueFixtureDraft(event:Event){
   const value=(event.target as HTMLInputElement).value;
   if(!/^#[0-9a-f]{6}$/i.test(value))return;
   prepareDirectCueEdit();
-  const next={...cueDraftColors.value};
-  for(const f of selectedFixtures.value)if(!f.locked)next[f.id]=value;
-  cueDraftColors.value=next;
+  const ids=selectedFixtures.value.filter(f=>!f.locked).map(f=>f.id);
+  const changed=assignFixtureColour({
+    targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value
+  },ids,value,fixtures.value.map(f=>f.id));
+  cueDraftColors.value=changed.looks;
+  cueTargetIdsDraft.value=changed.targetIds;
 }
-function onCueEffectChanged(){prepareDirectCueEdit();commitEdit();}
+function onCueEffectChanged(event:Event){
+  const fx=(event.target as HTMLSelectElement).value as Fx;
+  if(!selectedFixtures.value.some(f=>!f.locked))return;
+  prepareDirectCueEdit();
+  const ids=selectedFixtures.value.filter(f=>!f.locked).map(f=>f.id);
+  const changed=assignFixtureEffect({
+    targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value
+  },ids,fx,fixtures.value.map(f=>f.id));
+  cueDraftEffects.value=changed.fixtureEffects as Record<string,Fx>;
+  cueTargetIdsDraft.value=changed.targetIds;
+  commitEdit();
+}
 function applyCueColorToSelection(){
   const before=snapshotScene(),value=activeCueFixtureColor.value;
   const next={...cueDraftColors.value};
@@ -328,7 +342,7 @@ function applyCueColorToSelection(){
 }
 function clearCueFixtureOverrides(){
   const before=snapshotScene();
-  cueDraftColors.value={};
+  cueDraftColors.value={};cueDraftEffects.value={};
   rememberScene(before);
 }
 function toggleGroup(name:string){
@@ -774,7 +788,7 @@ function sampleCurrentPixel(f: Fixture, index: number, count: number, time: numb
   if(cuePreview.value && (cueTargetMode.value==='ALL'||(cueTargetIdsDraft.value.length?cueTargetIdsDraft.value.includes(f.id):selectedIds.value.includes(f.id)))){
     // Explicit edit-preview overrides only the chosen cue target fixtures.
     // It never changes saved cues, other pixels or actual playback layers.
-    return sampleFx(effect.value,cueDraftColors.value[f.id]||color.value,
+    return sampleFx(cueDraftEffects.value[f.id]||effect.value,cueDraftColors.value[f.id]||color.value,
       index,count,time,output,f,speed.value);
   }
   const tint=getTintColor(f);
@@ -785,7 +799,7 @@ function sampleCurrentPixel(f: Fixture, index: number, count: number, time: numb
   for(const layer of activeLayers.value){
     if(!cueAppliesTo(layer,f.id))continue;
     // The timing of each cue is independent; a later GO never resets prior effects.
-    sampleFx(layer.effect,cueFixtureColor(layer,f.id),index,count,time-layer.started,colorB,f,layer.speed);
+    sampleFx(cueEffectForFixture(layer,f.id) as Fx,cueColourForFixture(layer,f.id),index,count,time-layer.started,colorB,f,layer.speed);
     rgb=composeRgb(rgb,[colorB.r,colorB.g,colorB.b],layerEnvelope(time,layer.started,layer.fade),layer.mode);
   }
   // Fixture tint is an independent default scene colour, not a second colour
@@ -853,6 +867,7 @@ function editCue(index:number){
   effect.value=c.effect;color.value=c.color;speed.value=c.speed;
   cueTargetMode.value=c.targetIds.length?'SELECTION':'ALL';
   cueDraftColors.value={...c.looks};
+  cueDraftEffects.value={...c.fixtureEffects};
   cueTargetIdsDraft.value=[...c.targetIds];
   if(c.targetIds.length){
     const ids=c.targetIds.filter(id=>fixtures.value.some(f=>f.id===id));
@@ -866,7 +881,7 @@ function applyCue(index:number){
   blackout.value=false;
   // Only re-triggering the same cue replaces its old instance. Other lanes keep running.
   const layer:ActiveLayer={id:'l'+crypto.randomUUID(),cueId:c.id,effect:c.effect,color:c.color,
-    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35,looks:{...c.looks}};
+    mode:c.mode||'ADD',targetIds:[...(c.targetIds||[])],started:showTime,fade:c.fade,speed:c.speed||.35,looks:{...c.looks},fixtureEffects:{...c.fixtureEffects}};
   activeLayers.value=[...activeLayers.value.filter(l=>l.cueId!==c.id).slice(-(layerBudget-1)),layer];
   // GO changes only the live cue stack, never the editor's draft palette.
   fadeStarted.value=showTime;fadeSeconds.value=c.fade;
@@ -901,17 +916,21 @@ function removeSelectedCueTargets(){
   const before=snapshotScene();
   const remove=new Set(selectedIds.value);
   cueTargetIdsDraft.value=cueTargetIdsDraft.value.filter(id=>!remove.has(id));
-  const looks={...cueDraftColors.value};
-  for(const id of remove)delete looks[id];
-  cueDraftColors.value=looks;
+  const looks={...cueDraftColors.value},fx={...cueDraftEffects.value};
+  for(const id of remove){delete looks[id];delete fx[id];}
+  cueDraftColors.value=looks;cueDraftEffects.value=fx;
   rememberScene(before);
 }
 function addCue(){
   if(cues.value.length>=3000)return;
   const before=snapshotScene();
   const c:Cue={id:'c'+crypto.randomUUID(),name:String(cues.value.length+1).padStart(2,'0')+' · NEW CUE',
-    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value,looks:{...cueDraftColors.value}};
-  cues.value.push(c);editIndex.value=cues.value.length-1;
+    effect:effect.value,fade:1,color:color.value,hold:5,mode:'ADD',targetIds:captureCueTargets(),speed:speed.value,looks:{},fixtureEffects:{}};
+  const draft={effect:effect.value,color:color.value,speed:speed.value,
+    targetMode:cueTargetMode.value,targetIds:captureCueTargets(),
+    looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value};
+  const clean=finishCueDraft(c,draft,fixtures.value.map(f=>f.id)) as Cue;
+  cues.value.push(clean);editIndex.value=cues.value.length-1;
   rememberScene(before);
 }
 function normalizeCue(){
@@ -924,11 +943,15 @@ function normalizeCue(){
 function updateCue(){
   const c=activeCue.value;if(!c)return;
   const before=snapshotScene();
-  c.effect=effect.value;c.color=color.value;c.speed=speed.value;c.targetIds=captureCueTargets();
-  c.looks={...cueDraftColors.value};
+  const drafted=finishCueDraft(c,{
+    effect:effect.value,color:color.value,speed:speed.value,
+    targetMode:cueTargetMode.value,targetIds:captureCueTargets(),
+    looks:cueDraftColors.value,fixtureEffects:cueDraftEffects.value
+  },fixtures.value.map(f=>f.id)) as Cue;
+  Object.assign(c,drafted);
   for(const layer of activeLayers.value)if(layer.cueId===c.id){
     layer.effect=c.effect;layer.color=c.color;layer.mode=c.mode;layer.speed=c.speed;
-    layer.targetIds=[...c.targetIds];layer.fade=c.fade;layer.looks={...c.looks};
+    layer.targetIds=[...c.targetIds];layer.fade=c.fade;layer.looks={...c.looks};layer.fixtureEffects={...c.fixtureEffects};
   }
   rememberScene(before);
 }
@@ -1443,7 +1466,7 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
         <template v-if="!collapsedPanels.effects">
         <div class="cue-direct-tip">1. SELECT LEDS → 2. EFFECT + COLOUR → 3. UPDATE / NEW CUE</div>
         <label class="field"><span>EFFET DIRECT</span>
-          <select v-model="effect" @focus="beginEdit" @change="onCueEffectChanged">
+          <select :value="cueDraftEffects[current.id]||effect" @focus="beginEdit" @change="onCueEffectChanged">
             <option value="solid">Solid Color</option>
             <option value="rainbow">Rainbow Flow</option>
             <option value="chase">Chase / Trail</option>

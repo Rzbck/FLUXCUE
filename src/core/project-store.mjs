@@ -33,7 +33,9 @@ export function parseStudioProject(json){
    hold:finite(c.hold,.1,3600)?c.hold:5,mode:c.mode==='REPLACE'?'REPLACE':'ADD',
    targetIds:[...new Set(targets)],speed:finite(c.speed,0,3)?c.speed:.35,
    looks:Object.fromEntries(Object.entries(c.looks&&typeof c.looks==='object'&&!Array.isArray(c.looks)?c.looks:{})
-     .filter(([id,value])=>ids.has(id)&&hex(value)).slice(0,500))};
+     .filter(([id,value])=>ids.has(id)&&hex(value)).slice(0,500)),
+   fixtureEffects:Object.fromEntries(Object.entries(c.fixtureEffects&&typeof c.fixtureEffects==='object'&&!Array.isArray(c.fixtureEffects)?c.fixtureEffects:{})
+     .filter(([id,fx])=>ids.has(id)&&effects.has(fx)).slice(0,500))};
  });
  const showTime=finite(d.showTime,0,10_000_000)?d.showTime:0;
  const activeLayers=Array.isArray(d.activeLayers)?d.activeLayers.slice(-12).filter(layer=>
@@ -46,7 +48,9 @@ export function parseStudioProject(json){
    fade:layer.fade,started:layer.started,mode:layer.mode,speed:finite(layer.speed,0,3)?layer.speed:.35,
    targetIds:Array.isArray(layer.targetIds)?layer.targetIds.filter(id=>ids.has(id)).slice(0,500):[],
    looks:Object.fromEntries(Object.entries(layer.looks&&typeof layer.looks==='object'&&!Array.isArray(layer.looks)?layer.looks:{})
-     .filter(([id,value])=>ids.has(id)&&hex(value)).slice(0,500))
+     .filter(([id,value])=>ids.has(id)&&hex(value)).slice(0,500)),
+   fixtureEffects:Object.fromEntries(Object.entries(layer.fixtureEffects&&typeof layer.fixtureEffects==='object'&&!Array.isArray(layer.fixtureEffects)?layer.fixtureEffects:{})
+     .filter(([id,fx])=>ids.has(id)&&effects.has(fx)).slice(0,500))
  })):[];
  // New files have explicit, user-owned groups. Old 0.1 projects without this
  // list are migrated once, retaining historical STAGE/FLOOR group assignments.
@@ -80,7 +84,9 @@ export function parseStudioProject(json){
    speed:finite(draft.speed,0,3)?draft.speed:draftCue.speed,
    targetMode:draft.targetMode==='ALL'||(!draft.targetMode&&!draftCue.targetIds.length)?'ALL':'SELECTION',
    targetIds:Array.isArray(draft.targetIds)?[...new Set(draft.targetIds.filter(id=>ids.has(id)))].slice(0,500):[...draftCue.targetIds],
-   looks:draftLooks};
+   looks:draftLooks,
+   fixtureEffects:Object.fromEntries(Object.entries(draft.fixtureEffects&&typeof draft.fixtureEffects==='object'&&!Array.isArray(draft.fixtureEffects)?draft.fixtureEffects:draftCue.fixtureEffects)
+     .filter(([id,fx])=>ids.has(id)&&effects.has(fx)).slice(0,500))};
  const selectedId=typeof d.selectedId==='string'&&ids.has(d.selectedId)?d.selectedId:fixtures[0].id;
  const selectedIds=Array.isArray(d.selectedIds)?d.selectedIds.filter(id=>ids.has(id)).slice(0,500):[selectedId];
  return {projectName:typeof d.project?.name==='string' && d.project.name.trim()?d.project.name.trim().slice(0,80):'UNTITLED PROJECT',
