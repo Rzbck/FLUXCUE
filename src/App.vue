@@ -7,7 +7,7 @@ import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { duplicateFixture, sameScene, sanitizeFixture } from './core/scene-editor.mjs';
+import { duplicateFixture, sanitizeFixture } from './core/scene-editor.mjs';
 import {chooseSelection, editableFixtures, selectionPivot, transformGroup, scenePixelPosition, spatialWave, spatialBlocks} from './core/spatial-selection.mjs';
 import { describePatch } from './core/patch.mjs';
 import { virtualPixelRows } from './core/pixel-map.mjs';
@@ -15,7 +15,7 @@ import { createFixtureArray } from './core/layouts.mjs';
 import { fadeFactor, advancePreviewClock } from './core/cue-engine.mjs';
 import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,scaleSelected} from './core/hardware.mjs';
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
-import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
+import {cueAppliesTo,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
 import {createDocumentHistory} from './core/document-history.mjs';
 import {initialCueDraft,assignFixtureEffect,assignFixtureColour,finishCueDraft,cueEffectForFixture,cueColourForFixture} from './core/cue-authoring.mjs';
@@ -862,6 +862,9 @@ function frame(now:number){
 }
 function editCue(index:number){
   if(index<0||index>=cues.value.length)return;
+  // Finish focused widget edits BEFORE loading a new cue. Browsing alone
+  // must not turn into a phantom document mutation.
+  commitEdit();recordUntrackedEdits();
   editIndex.value=index;
   const c=cues.value[index],draft=initialCueDraft(c);
   effect.value=draft.effect;color.value=draft.color;speed.value=draft.speed;
