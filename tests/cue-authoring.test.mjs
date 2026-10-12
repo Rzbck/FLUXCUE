@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {initialCueDraft,assignFixtureLook,finishCueDraft,cueEffectForFixture,cueColourForFixture} from '../src/core/cue-authoring.mjs';
+import {initialCueDraft,assignFixtureLook,assignFixtureEffect,assignFixtureColour,finishCueDraft,cueEffectForFixture,cueColourForFixture} from '../src/core/cue-authoring.mjs';
 const cue={id:'c',effect:'solid',color:'#ffffff',speed:.35,targetIds:[],looks:{},fixtureEffects:{}};
 test('A red fire, then B blue plasma, without losing the first target or effect',()=>{
  let draft=initialCueDraft(cue);
@@ -27,4 +27,16 @@ test('selecting a fixture does not implicitly change any cue',()=>{
  const draft=initialCueDraft({...cue,fixtureEffects:{a:'comet'},looks:{a:'#ffff00'}});
  const result=assignFixtureLook(draft,[],{effect:'fire',color:'#ff0000'},['a']);
  assert.deepEqual(result.fixtureEffects,{a:'comet'});
+});
+
+test('effect edit preserves separately chosen fixture colours',()=>{
+ let draft=initialCueDraft(cue);
+ draft=assignFixtureColour(draft,['a'],'#ff0000',['a','b']);
+ draft=assignFixtureColour(draft,['b'],'#0000ff',['a','b']);
+ draft=assignFixtureEffect(draft,['a','b'],'comet',['a','b']);
+ assert.deepEqual(draft.looks,{a:'#ff0000',b:'#0000ff'});
+ assert.deepEqual(draft.fixtureEffects,{a:'comet',b:'comet'});
+ draft=assignFixtureEffect(draft,['b'],'scanner',['a','b']);
+ assert.equal(draft.fixtureEffects.a,'comet');
+ assert.equal(draft.fixtureEffects.b,'scanner');
 });

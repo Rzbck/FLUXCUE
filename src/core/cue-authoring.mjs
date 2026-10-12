@@ -29,6 +29,24 @@ export function assignFixtureLook(draft,ids,{effect,color},knownIds){
   targetIds:[...new Set([...(draft.targetIds||[]),...selected])],
   looks,fixtureEffects};
 }
+function appendTargets(draft,ids,knownIds){
+ const allowed=new Set(knownIds);
+ const selected=[...new Set(ids)].filter(id=>allowed.has(id));
+ return {...draft,targetMode:'SELECTION',
+  targetIds:[...new Set([...(draft.targetIds||[]),...selected])]};
+}
+export function assignFixtureEffect(draft,ids,effect,knownIds){
+ if(!isFx(effect)||!draft)throw new TypeError('Invalid effect');
+ const next=appendTargets(draft,ids,knownIds),fixtureEffects={...draft.fixtureEffects};
+ for(const id of ids)if(next.targetIds.includes(id))fixtureEffects[id]=effect;
+ return {...next,fixtureEffects};
+}
+export function assignFixtureColour(draft,ids,color,knownIds){
+ if(!isColor(color)||!draft)throw new TypeError('Invalid colour');
+ const next=appendTargets(draft,ids,knownIds),looks={...draft.looks};
+ for(const id of ids)if(next.targetIds.includes(id))looks[id]=color;
+ return {...next,looks};
+}
 export function cueEffectForFixture(source,id){
  return isFx(source?.fixtureEffects?.[id])?source.fixtureEffects[id]:source.effect;
 }
