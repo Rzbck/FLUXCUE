@@ -122,6 +122,53 @@ try{
   const redone=await evaluate('window.__FLUXCUE_SMOKE__.state()');
   assert.ok(Math.abs(redone.x-dragged.position.x)<.0001,'Ctrl+Shift+Z failed to redo');
  }
+ // The effect menu and colour picker MUST compose TWO different fixture looks
+ // through the same Vue event handlers the user operates; no direct model writes.
+ const selectFx=async fx=>{
+  const ok=await evaluate(`(()=>{
+   const input=[...document.querySelectorAll('select')].find(el=>el.querySelector('option[value="${fx}"]'));
+   if(!input)return false;
+   input.value="${fx}";input.dispatchEvent(new Event('change',{bubbles:true}));return true;
+  })()`);
+  assert.equal(ok,true,'Cue effect editor dropdown is missing '+fx);
+  await delay(100);
+ };
+ const chooseColour=async hex=>{
+  const ok=await evaluate(`(()=>{
+   const input=document.querySelector('input[aria-label="Cue colour immediately previewed on selected fixtures"]');
+   if(!input)return false;
+   input.value="${hex}";input.dispatchEvent(new Event('input',{bubbles:true}));
+   input.dispatchEvent(new Event('change',{bubbles:true}));return true;
+  })()`);
+  assert.equal(ok,true,'Cue colour picker not found');
+  await delay(100);
+ };
+ await evaluate("window.__FLUXCUE_SMOKE__.selectFixture('s1')");
+ await selectFx('fire');await chooseColour('#ff0000');
+ await evaluate("window.__FLUXCUE_SMOKE__.selectFixture('s2')");
+ await selectFx('plasma');await chooseColour('#0000ff');
+ const beforeSave=await evaluate('window.__FLUXCUE_SMOKE__.cueState()');
+ assert.equal(beforeSave.draftEffects.s1,'fire');
+ assert.equal(beforeSave.draftEffects.s2,'plasma');
+ assert.equal(beforeSave.draftColours.s1,'#ff0000');
+ assert.equal(beforeSave.draftColours.s2,'#0000ff');
+ assert.deepEqual(beforeSave.targetIds.slice().sort(),['s1','s2']);
+ assert.equal(beforeSave.cueEffects.s1,undefined,'Draft was applied to saved cue before UPDATE');
+ const updated=await evaluate("(()=>{const b=document.querySelector('.cue-direct-actions button');if(!b)return false;b.click();return true})()");
+ assert.equal(updated,true,'UPDATE CUE button missing');
+ await delay(150);
+ const saved=await evaluate('window.__FLUXCUE_SMOKE__.cueState()');
+ assert.equal(saved.cueEffects.s1,'fire');assert.equal(saved.cueEffects.s2,'plasma');
+ assert.equal(saved.cueColours.s1,'#ff0000');assert.equal(saved.cueColours.s2,'#0000ff');
+ assert.equal(saved.cueEffects.s3,undefined,'Unselected fixture was unexpectedly changed');
+ await key(2);
+ const undoneCue=await evaluate('window.__FLUXCUE_SMOKE__.cueState()');
+ assert.equal(undoneCue.cueEffects.s1,undefined,'Undo did not revert saved cue modification');
+ await key(10);
+ const redoneCue=await evaluate('window.__FLUXCUE_SMOKE__.cueState()');
+ assert.equal(redoneCue.cueEffects.s1,'fire','Redo did not restore saved cue effect');
+ assert.equal(redoneCue.cueEffects.s2,'plasma');
+ console.log('CUE EDITOR PASS: two independent effects and colours, UPDATE, Ctrl+Z and redo');
  assert.ok(await evaluate("document.querySelectorAll('select option[value=\"spatial-ripple\"]').length===1"),'Advanced effect menu missing');
  assert.ok(await evaluate("document.querySelectorAll('.viewport canvas').length===1"),'3D editor canvas missing');
  console.log('BROWSER PASS: Chromium WebGL Vue mounted, 3 synthetic gizmo drags with real keyboard Ctrl+Z/redo, 11 FX menu');

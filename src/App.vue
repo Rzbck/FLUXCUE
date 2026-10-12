@@ -1171,6 +1171,12 @@ onMounted(()=>{
       },
       state:()=>({x:current.value.x,y:current.value.y,z:current.value.z,
         undo:history.depth,redo:history.redoDepth}),
+      selectFixture:(id:string)=>selectFixture(id),
+      cueState:()=>({selected:selectedId.value,editIndex:editIndex.value,
+        draftEffects:{...cueDraftEffects.value},draftColours:{...cueDraftColors.value},
+        targetIds:[...cueTargetIdsDraft.value],
+        cueEffects:{...activeCue.value.fixtureEffects},cueColours:{...activeCue.value.looks},
+        cueTargetIds:[...activeCue.value.targetIds]}),
       pointerCandidates:()=>{
         scene.updateMatrixWorld(true);
         const picker=(transform as unknown as {_gizmo?:{picker?:{translate?:THREE.Group}}})._gizmo?.picker?.translate;
