@@ -17,7 +17,8 @@ import {CHIP_PROFILES,DENSITY_PRESETS,pixelCountFor,inferredDensity,chipFormat,s
 import {parseStudioProject,stringifyStudioProject} from './core/project-store.mjs';
 import {cueAppliesTo,cueFixtureColor,layerEnvelope,composeRgb,cueNextAt} from './core/cue-layers.mjs';
 import {createNamedGroup,renameNamedGroup,moveToGroup,removeNamedGroup} from './core/groups.mjs';
-import {commitHistory,stepHistory,sameUndoableState} from './core/editor-history.mjs';
+import {createDocumentHistory} from './core/document-history.mjs';
+import {initialCueDraft,assignFixtureLook,finishCueDraft,cueEffectForFixture,cueColourForFixture} from './core/cue-authoring.mjs';
 import {DIFFUSERS,EMITTERS,optics,copyFixtures} from './core/led-optics.mjs';
 import {ADVANCED_EFFECTS,effectSample} from './core/effects.mjs';
 import {lightSamples} from './core/lighting.mjs';
@@ -25,10 +26,10 @@ import {lightSamples} from './core/lighting.mjs';
 type Fx = 'solid' | 'rainbow' | 'chase' | 'gradient' | 'spatial-wave' | 'spatial-blocks'
   | 'breath'|'pulse'|'comet'|'scanner'|'theater'|'sparkle'|'fire'|'plasma'|'spatial-ripple'|'spatial-orbit'|'strobe';
 type Fixture = { id: string; name: string; pixels: number; length: number; x: number; y: number; z: number; angle: number; format: 'RGB' | 'RGBW'; group: string; visible: boolean; locked: boolean; chip:string; density:number; tint:string; ledSizeMm:number; emitterMode:'front'|'dual'; diffuser:'none'|'flat'|'tube' };
-type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
+type SceneSnapshot = { projectName:string; fixtures: Fixture[]; groups:string[]; cues: Cue[]; selectedId: string; selectedIds: string[]; activeIndex: number; editIndex:number; effect:Fx; color:string; speed:number; brightness:number; cueDraftColors:Record<string,string>; cueDraftEffects:Record<string,Fx>;cueTargetMode:'ALL'|'SELECTION';cueTargetIdsDraft:string[] };
 type ToolMode = 'translate' | 'rotate' | 'scale';
-type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string> };
-type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>};
+type Cue = { id: string; name: string; effect: Fx; fade: number; color: string; hold:number; mode:'ADD'|'REPLACE'; targetIds:string[]; speed:number; looks:Record<string,string>;fixtureEffects:Record<string,Fx> };
+type ActiveLayer = {id:string;cueId:string;effect:Fx;color:string;mode:'ADD'|'REPLACE';targetIds:string[];started:number;fade:number;speed:number;looks:Record<string,string>;fixtureEffects:Record<string,Fx>};
 const fixtures = ref<Fixture[]>([
   { id:'s1',name:'LED STRIP / 01',pixels:120,length:4,x:0,y:2.7,z:-1.3,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' },
   { id:'s2',name:'LED STRIP / 02',pixels:70,length:2.5,x:-2.3,y:1.45,z:0,angle:90,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:28,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' },
@@ -36,10 +37,10 @@ const fixtures = ref<Fixture[]>([
   { id:'s4',name:'LED STRIP / 04',pixels:150,length:5,x:0,y:0.1,z:1.5,angle:0,format:'RGB',group:'',visible:true,locked:false,chip:'WS2815',density:30,tint:'#ffffff',ledSizeMm:5,emitterMode:'front',diffuser:'none' }
 ]);
 const cues = ref<Cue[]>([
-  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
-  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35,looks:{} },
-  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{} },
-  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35,looks:{} }
+  { id:'c1', name:'01 · INIT / WHITE', effect:'solid',fade:0.4,color:'#bfc8e5',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{},fixtureEffects:{} },
+  { id:'c2', name:'02 · CHROMA FLOW',effect:'rainbow',fade:2,color:'#79b8ff',hold:7,mode:'ADD',targetIds:[],speed:.35,looks:{},fixtureEffects:{} },
+  { id:'c3', name:'03 · PULSE / CHASE',effect:'chase',fade:1.2,color:'#ff835e',hold:5,mode:'ADD',targetIds:[],speed:.35,looks:{},fixtureEffects:{} },
+  { id:'c4', name:'04 · SOFT GRADIENT',effect:'gradient',fade:2,color:'#99a7ff',hold:6,mode:'ADD',targetIds:[],speed:.35,looks:{},fixtureEffects:{} }
 ]);
 const selectedId = ref('s1');
 const selectedIds = ref<string[]>(['s1']);
@@ -64,6 +65,7 @@ const layerBudget=12;
 const selectedTint=ref('#ffffff');
 const cueTargetMode=ref<'ALL'|'SELECTION'>('SELECTION');
 const cueDraftColors=ref<Record<string,string>>({});
+const cueDraftEffects=ref<Record<string,Fx>>({});
 const cueTargetIdsDraft=ref<string[]>([]);
 const cuePreview=ref(false);
 const activeCueFixtureColor=computed(()=>cueDraftColors.value[current.value.id]||color.value);
@@ -93,8 +95,10 @@ const lightPower=ref(1.5);
 const bloomPower=ref(0.6);
 const shadowQuality=ref<'off'|'low'|'high'>('low');
 const lightingSamplesUsed=ref(0);
-const undoStack = ref<SceneSnapshot[]>([]);
-const redoStack = ref<SceneSnapshot[]>([]);
+const history=createDocumentHistory({capacity:80});
+const undoStack=ref<number>(0);
+const redoStack=ref<number>(0);
+function refreshHistoryUI(){undoStack.value=history.depth;redoStack.value=history.redoDepth;}
 const activeIndex = ref(1);
 const editIndex=ref(1);
 const activeCue=computed(()=>cues.value[editIndex.value] ?? cues.value[0]);
@@ -125,7 +129,6 @@ let previewSurfaces:THREE.Object3D[]=[];
 let transform: TransformControls, transformProxy: THREE.Object3D, grid: THREE.GridHelper, coarseGrid: THREE.GridHelper;
 let transforming = false, suppressSceneClick = false;
 let dragStart: SceneSnapshot | null = null, editStart: SceneSnapshot | null = null;
-let historyBaseline:SceneSnapshot|null=null;
 let replaying=false;
 let dragPivot: {x:number,y:number,z:number} | null = null;
 let dragBaseline: Fixture[] = [];
@@ -180,40 +183,35 @@ function resize() {
 }
 function snapshotScene(): SceneSnapshot {
   return { projectName:projectName.value,fixtures:fixtures.value.map(f=>({...f})),groups:[...groups.value],
-    cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}})),
+    cues:cues.value.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks},fixtureEffects:{...c.fixtureEffects}})),
     selectedId:selectedId.value,selectedIds:[...selectedIds.value],
     activeIndex:activeIndex.value,editIndex:editIndex.value,effect:effect.value,
-    color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},
+    color:color.value,speed:speed.value,brightness:brightness.value,cueDraftColors:{...cueDraftColors.value},cueDraftEffects:{...cueDraftEffects.value},
     cueTargetMode:cueTargetMode.value,cueTargetIdsDraft:[...cueTargetIdsDraft.value] };
 }
-function rememberScene(previous: SceneSnapshot, _exact=false) {
-  const next=snapshotScene();
-  if(sameUndoableState(previous,next)){historyBaseline=next;return;}
-  // Explicit mutations always restore precisely the snapshot taken before
-  // that mutation. Do not substitute a stale reactive watcher baseline.
-  const result=commitHistory(undoStack.value,redoStack.value,previous,next,100);
-  undoStack.value=result.undo;redoStack.value=result.redo;
-  historyBaseline=next;
+/** All editing paths record one project document transaction here.
+ * Vue controls/view navigation are adapters; they do not own Undo.
+ */
+function rememberScene(previous:SceneSnapshot,_exact=false){
+  history.push(previous,snapshotScene(),'Document edit');refreshHistoryUI();
 }
 function recordUntrackedEdits(){
   if(!hydrated||replaying||transforming||dragStart||editStart)return;
-  const next=snapshotScene();
-  if(!historyBaseline){historyBaseline=next;return;}
-  if(!sameUndoableState(historyBaseline,next))rememberScene(historyBaseline);
-  else historyBaseline=next;
+  history.observe(snapshotScene());refreshHistoryUI();
 }
 function restoreScene(previous: SceneSnapshot) {
   projectName.value=previous.projectName;
   fixtures.value=previous.fixtures.map(f=>({...f}));
   groups.value=[...previous.groups];
-  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks}}));
+  cues.value=previous.cues.map(c=>({...c,targetIds:[...c.targetIds],looks:{...c.looks},fixtureEffects:{...c.fixtureEffects}}));
   cueDraftColors.value={...previous.cueDraftColors};
+  cueDraftEffects.value={...previous.cueDraftEffects};
   cueTargetMode.value=previous.cueTargetMode;
   cueTargetIdsDraft.value=[...previous.cueTargetIdsDraft];
   // When undoing an updated cue, running layers must show the restored look too.
   for(const layer of activeLayers.value){
     const cue=cues.value.find(c=>c.id===layer.cueId);
-    if(cue){layer.looks={...cue.looks};layer.color=cue.color;layer.effect=cue.effect;layer.speed=cue.speed;}
+    if(cue){layer.looks={...cue.looks};layer.fixtureEffects={...cue.fixtureEffects};layer.color=cue.color;layer.effect=cue.effect;layer.speed=cue.speed;}
   }
   activeIndex.value=Math.max(0,Math.min(previous.activeIndex,cues.value.length-1));
   editIndex.value=Math.max(0,Math.min(previous.editIndex,cues.value.length-1));
@@ -224,35 +222,24 @@ function restoreScene(previous: SceneSnapshot) {
   // Scene undo changes geometry/data only; never stop a running cue.
   syncTransform();
 }
-function undoEdit(){
+function replayDocument(direction:'undo'|'redo'){
   if(dragStart)finishTransformDrag();
   commitEdit();
   recordUntrackedEdits();
-  const result=stepHistory(undoStack.value,redoStack.value,snapshotScene(),'undo');
-  if(!result.changed)return;
+  const previous=direction==='undo'?history.undo(snapshotScene()):history.redo(snapshotScene());
+  if(!previous)return;
   replaying=true;
-  undoStack.value=result.undo;redoStack.value=result.redo;
-  restoreScene(result.current);
-  historyBaseline=snapshotScene();
+  restoreScene(previous as SceneSnapshot);
+  refreshHistoryUI();
   nextTick(()=>{replaying=false;});
 }
-function redoEdit(){
-  if(dragStart)finishTransformDrag();
-  commitEdit();
-  recordUntrackedEdits();
-  const result=stepHistory(undoStack.value,redoStack.value,snapshotScene(),'redo');
-  if(!result.changed)return;
-  replaying=true;
-  undoStack.value=result.undo;redoStack.value=result.redo;
-  restoreScene(result.current);
-  historyBaseline=snapshotScene();
-  nextTick(()=>{replaying=false;});
-}
-function beginEdit() {
-  if (!editStart) editStart=snapshotScene();
+function undoEdit(){replayDocument('undo');}
+function redoEdit(){replayDocument('redo');}
+function beginEdit(){
+  if(!editStart){editStart=snapshotScene();history.begin(editStart,'Property edit');}
 }
 function commitEdit(){
-  if(editStart)rememberScene(editStart);
+  if(editStart){history.commit(snapshotScene());refreshHistoryUI();}
   editStart=null;
 }
 function onFieldFocus(event:FocusEvent){
@@ -406,7 +393,8 @@ function serializableProject(){
   return {project:{name:projectName.value},fixtures:fixtures.value,groups:groups.value,cues:cues.value,selectedId:selectedId.value,selectedIds:selectedIds.value,activeIndex:activeIndex.value,collapsedGroups:collapsedGroups.value,
     autoPlay:autoPlay.value,speed:speed.value,brightness:brightness.value,collapsedPanels:collapsedPanels.value,
     editorDraft:{cueIndex:editIndex.value,effect:effect.value,color:color.value,speed:speed.value,
-      targetMode:cueTargetMode.value,targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value},
+      targetMode:cueTargetMode.value,targetIds:cueTargetIdsDraft.value,looks:cueDraftColors.value,
+      fixtureEffects:cueDraftEffects.value},
     activeLayers:activeLayers.value,showTime,running:running.value,blackout:blackout.value};
 }
 function persistLocal(){
@@ -443,6 +431,7 @@ function restoreLocal(){
     autoNextTime=autoPlay.value?cueNextAt(showTime,cues.value[activeIndex.value]?.hold||5):Infinity;
     effect.value=parsed.editorDraft.effect;color.value=parsed.editorDraft.color;speed.value=parsed.editorDraft.speed;
     cueDraftColors.value={...parsed.editorDraft.looks};
+    cueDraftEffects.value={...parsed.editorDraft.fixtureEffects} as Record<string,Fx>;
     cueTargetMode.value=parsed.editorDraft.targetMode as 'ALL'|'SELECTION';
     cueTargetIdsDraft.value=[...parsed.editorDraft.targetIds];
     saveState.value='RECOVERED';
@@ -1008,11 +997,13 @@ function loadProject(event:Event){
     Object.assign(collapsedPanels.value,p.collapsedPanels);
     speed.value=p.speed;brightness.value=p.brightness;autoPlay.value=p.autoPlay;
     activeLayers.value=[];showTime=0;showSeconds.value=0;autoNextTime=Infinity;blackout.value=false;
-    undoStack.value=[];redoStack.value=[];editStart=null;
+    editStart=null;
     effect.value=p.editorDraft.effect;color.value=p.editorDraft.color;speed.value=p.editorDraft.speed;
     cueDraftColors.value={...p.editorDraft.looks};
+    cueDraftEffects.value={...p.editorDraft.fixtureEffects} as Record<string,Fx>;
     cueTargetMode.value=p.editorDraft.targetMode as 'ALL'|'SELECTION';
     cueTargetIdsDraft.value=[...p.editorDraft.targetIds];
+    history.reset(snapshotScene());refreshHistoryUI();
     scheduleSave();
   }).catch(err=>alert('Import refused, previous project preserved: '+String(err))).finally(()=>{input.value='';});
 }
@@ -1021,8 +1012,9 @@ function finishTransformDrag(){
   const before=dragStart;
   dragStart=null;dragPivot=null;dragBaseline=[];
   transforming=false;controls.enabled=true;
-  // A drag is an atomic history step, BEFORE any unrelated selection navigation.
-  rememberScene(before,true);
+  // Capture precisely the down/up document states, not a late Vue watcher baseline.
+  history.push(before,snapshotScene(),'Transform LED');
+  refreshHistoryUI();
   syncTransform();
 }
 function onKey(e: KeyboardEvent) {
@@ -1057,7 +1049,7 @@ function onKey(e: KeyboardEvent) {
   if (e.code==='Delete'){e.preventDefault();deleteFixture();}
 }
 onMounted(()=>{
-  restoreLocal();hydrated=true;historyBaseline=snapshotScene();
+  restoreLocal();hydrated=true;history.reset(snapshotScene());refreshHistoryUI();
   document.addEventListener('focusin',onFieldFocus,true);
   document.addEventListener('focusout',onFieldBlur,true);
   scene=new THREE.Scene();scene.background=new THREE.Color('#070707');
@@ -1116,7 +1108,6 @@ onMounted(()=>{
     controls.enabled=false;transforming=true;suppressSceneClick=true;
     // Close any pending widget transaction BEFORE the 3D gesture starts.
     commitEdit();recordUntrackedEdits();
-    historyBaseline=snapshotScene();
     dragStart=snapshotScene();
     dragBaseline=dragStart.fixtures.map(f=>({...f}));
     dragPivot=selectionPivot(editableFixtures(dragBaseline,selectedIds.value));
@@ -1154,10 +1145,10 @@ onMounted(()=>{
         transformProxy.position[axis]+=distance;
         transform.dispatchEvent({type:'objectChange'} as never);
         transform.dispatchEvent({type:'mouseUp'} as never);
-        return {position:{x:current.value.x,y:current.value.y,z:current.value.z},undo:undoStack.value.length};
+        return {position:{x:current.value.x,y:current.value.y,z:current.value.z},undo:history.depth};
       },
       state:()=>({x:current.value.x,y:current.value.y,z:current.value.z,
-        undo:undoStack.value.length,redo:redoStack.value.length}),
+        undo:history.depth,redo:history.redoDepth}),
       pointerCandidates:()=>{
         scene.updateMatrixWorld(true);
         const picker=(transform as unknown as {_gizmo?:{picker?:{translate?:THREE.Group}}})._gizmo?.picker?.translate;
@@ -1218,10 +1209,10 @@ watch(()=>fixtures.value.map(f=>[f.id,f.pixels,f.length,f.x,f.y,f.z,f.angle,f.vi
 watch([selectedId,selectedIds],()=>{rebuildScene();syncTransform();});
 watch([toolMode,positionSnap,angleSnap],updateTransformOptions);
 watch([positionSnap,showGrid],updateGrid);
-watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,activeLayers,running,blackout],scheduleSave,{deep:true});
+watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,collapsedGroups,collapsedPanels,autoPlay,speed,brightness,effect,color,cueTargetMode,cueTargetIdsDraft,cueDraftColors,cueDraftEffects,activeLayers,running,blackout],scheduleSave,{deep:true});
 // Catch even direct v-model sliders, palette tweaks, cue name and batch commands.
 // Flush after the event so one user operation produces one history item.
-watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors],
+watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editIndex,effect,color,speed,brightness,cueTargetMode,cueTargetIdsDraft,cueDraftColors,cueDraftEffects],
   recordUntrackedEdits,{deep:true,flush:'post'});
 </script>
 
@@ -1315,8 +1306,8 @@ watch([projectName,fixtures,cues,groups,selectedId,selectedIds,activeIndex,editI
             <option value="off">OFF</option><option value="low">2 LIGHTS</option><option value="high">4 LIGHTS</option>
           </select></label>
           <span class="tool-separator"></span>
-          <button title="Undo (Ctrl+Z)" :disabled="!undoStack.length" @click="undoEdit">↶ UNDO</button>
-          <button title="Redo (Ctrl+Shift+Z)" :disabled="!redoStack.length" @click="redoEdit">↷ REDO</button>
+          <button title="Undo (Ctrl+Z)" :disabled="undoStack===0" @click="undoEdit">↶ UNDO</button>
+          <button title="Redo (Ctrl+Shift+Z)" :disabled="redoStack===0" @click="redoEdit">↷ REDO</button>
           <button title="Copy selected LED strips (Ctrl+C)" @click="copySelected">⧉ COPY <kbd>Ctrl+C</kbd></button>
           <button title="Paste copied strips (Ctrl+V)" :disabled="!fixtureClipboard.length" @click="pasteSelected">▣ PASTE <kbd>Ctrl+V</kbd></button>
         </div>
