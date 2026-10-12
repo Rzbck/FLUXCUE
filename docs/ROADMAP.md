@@ -84,3 +84,10 @@ No dates promised until milestones' acceptance tests pass.
 - [ ] P0: complete mouse QA for all gizmo axes and multi-selection, 1k/10k/50k performance, reusable FX parameter/modifier library, patch validator.
 - [ ] P1: multi-track editable timeline, GLB scenery, spline strips, media/audio mapping, revisioned project model.
 - [ ] Before production: headless deterministic site engine, localhost Art-Net/sACN test packets, standalone site fallback, license and security signoffs.
+
+## P0 foundations-first correction (2026-10-12)
+- **Issue [#28](https://github.com/Rzbck/FLUXCUE/issues/28)** is the canonical cross-module refactor goal; do not add isolated toolbar functions instead.
+- [x] DRAFT PR #27 foundation slice 1: one pure document history, per-fixture FX+colour cue program, schema migration, Chrome UPDATE/GO/Undo test.
+- [ ] Finish command-bus migration and remove deep-watcher edits, centralize effect program registry/authoring and a persistent per-cue draft model.
+- [ ] Extract Vue controller/composables and PreviewRenderer from ~90kB App.vue, document stable module contracts and schema v0.3 migration.
+- [ ] Full browser+Brave acceptance before publishing. The current public main remains unmodified.

@@ -133,3 +133,21 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Final protected PR #22 merge, main CI, Pages deployment with matching source SHA.
 - [ ] Manual Brave at 1366x768 and 1920x1080: exact mouse X/Y/Z, rapid drags, Ctrl+Z/redo, popup focus, rendering of 2/4 spot shadows and occluding surfaces, lighting-quality controls and effects.
 - [ ] FPS/GPU/p95/p99 measured benchmark 1k/10k/50k pixels, FX modifier/library architecture, GLB and splines, patch conflict engine and real protocol output: NOT RUN/IMPLEMENTED.
+
+## Foundation PR #27 — 2026-10-12
+- [x] Pure transactional document-history tests: atomic geometry undo/redo, no-op selection navigation, immutable snapshots, cue colour/program undo, redo invalidation, numeric reactive fallback.
+- [x] Pure cue-authoring tests: independent A/B effects + colours, target validation, effects do not overwrite unrelated colours, legacy cue fields.
+- [x] Project JSON roundtrip validation: `fixtureEffects` per cue and current draft survive, legacy files without new maps parse safely.
+- [x] Headless Chromium browser test: actual X gizmo press/drag/release + Ctrl+Z; Vue effects UI Fire/red on s1 and Plasma/blue on s2, UPDATE → Undo → Redo → GO correctly preserves both effects in live layer. Earlier source [CI 38211081579](https://github.com/Rzbck/FLUXCUE/actions/runs/38211081579) succeeded.
+- [ ] Latest PR SHA CI passes after docs/handoff update, no regressions.
+- [ ] All effect/cue edit navigation and focus transitions have persistent per-cue drafts and are command-driven rather than inferred from deep watcher.
+- [ ] App.vue has separate scene command controller, cue controller, effect execution and WebGL rendering adapter, no duplicated source-of-truth state.
+- [ ] Chrome real X/Y/Z/rotate/scale and multiselection 10 repeated gestures, pointer release outside window, numeric/colour input editing and history in input-focus contexts, import/export/reload in two resolutions.
+- [ ] User specifically validates Brave Undo and complete effect creation flow before PR merge and Pages release.
+- [ ] Fully configurable reusable FX programs with palette/mask/parameters, versioned schema/upgrade, stable performance target measurements.
+
+## 2026-10-12 — CI confirms numeric-field transaction after removing deep watcher
+- [x] [CI 38211562186](https://github.com/Rzbck/FLUXCUE/actions/runs/38211562186) PASS with 90/90 Node tests.
+- [x] Chromium: numeric Position X focus/input/change/blur edits fixture, creates exactly one command, Ctrl+Z restores old XYZ and redo restores new XYZ.
+- [x] Chromium: actual pointer X drag Undo; two-fixture FX/cue UPDATE→Undo→Redo→GO.
+- [ ] Real Brave test on user's installation; real Y/Z/ROTATE/SCALE, multiselection, native colour picker and untracked direct input coverage.

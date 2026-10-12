@@ -67,3 +67,6 @@ Private control plane via VPN/Tailscale or hardened authenticated gateway. Art-N
 6. Peak universe throughput and egress: packet capture on Oracle network.
 
 Architecture is an intent, not evidence that these services currently exist.
+
+## Foundation refactor in progress — 2026-10-12
+See [FOUNDATION_REFACTOR_2026-10-12.md](FOUNDATION_REFACTOR_2026-10-12.md) and [issue #28](https://github.com/Rzbck/FLUXCUE/issues/28). Core data ownership is **DocumentStore → transactional CommandBus → Cue/Effect authoring → deterministic frame evaluation → PreviewRenderer → optional future output**. Vue panels observe controllers, and the WebGL stage cannot edit the project directly. A focused draft PR #27 starts implementing the history and cue boundaries; the giant App.vue and reactive edit fallback remain debt and **must not** be described as fully refactored. The current public GitHub Pages version is unchanged.

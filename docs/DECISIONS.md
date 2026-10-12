@@ -66,3 +66,8 @@ Display SMD geometry and use up to 8 pooled dynamic directional SpotLights to il
 
 ## D-020 — Self-authored native FX, richer modular graph later (2026-10-11)
 Add 11 deterministic self-authored patterns to the six original. Future signed-off work: parameter descriptors, palette/interpolation, modifiers, 3D masks, script/audio/media adapters, performance benchmarks. No GPL effect code has been transplanted.
+
+## D-021 — Document history and per-fixture effects are owned by pure domain modules (2026-10-12)
+After repeated user reports of Ctrl+Z not working and cue creation being incoherent, stop feature-patching the large Vue component. `src/core/document-history.mjs` is the **only** undo/redo authority: exact deep-copied pre/post document states, begin/commit, command push, immutable replay; selection or browsing a cue may update inspector navigation without consuming Undo. The App adapter maps input and 3D gestures to this core; the old `editor-history.mjs` must not coexist. This is foundation **phase 1**, not proof every DOM or native colour-picker interaction works.
+
+A cue is an immutable-ish description of a look across multiple targets: each fixture can have its own effect and colour. `src/core/cue-authoring.mjs` validates/composes those values and persists in the project schema; preview and actual cue layer playback must consume the same per-fixture effect map. Editing a cue and triggering GO are separate actions. The project format still needs a new explicit version/migration and effect-program parameters before it is professional. Keep public Pages unchanged until final Chrome multi-axis/Brave tests.

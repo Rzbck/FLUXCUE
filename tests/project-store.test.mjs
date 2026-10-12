@@ -81,3 +81,22 @@ test('diffuser and directional emitter configuration survive project backup',()=
  assert.equal(legacy.fixtures[0].ledSizeMm,5);
  assert.equal(legacy.fixtures[0].emitterMode,'front');
 });
+
+test('two independent effects and colours survive a project JSON round trip',()=>{
+ const a={...fixture,id:'s1'},b={...fixture,id:'s2'};
+ const custom={...cue,targetIds:['s1','s2'],effect:'solid',color:'#ffffff',
+  fixtureEffects:{s1:'fire',s2:'plasma'},looks:{s1:'#ff0000',s2:'#0000ff'}};
+ const text=stringifyStudioProject({fixtures:[a,b],cues:[custom],groups:[],
+  editorDraft:{cueIndex:0,targetMode:'SELECTION',targetIds:['s1','s2'],
+   effect:'solid',color:'#ffffff',speed:.5,
+   fixtureEffects:{s1:'comet',s2:'scanner'},looks:{s1:'#ff0000',s2:'#0000ff'}}});
+ const parsed=parseStudioProject(text);
+ assert.deepEqual(parsed.cues[0].fixtureEffects,{s1:'fire',s2:'plasma'});
+ assert.deepEqual(parsed.editorDraft.fixtureEffects,{s1:'comet',s2:'scanner'});
+ assert.deepEqual(parsed.cues[0].looks,{s1:'#ff0000',s2:'#0000ff'});
+});
+test('legacy cue and layer without per-strip effect maps load with empty maps',()=>{
+ const old=parseStudioProject(stringifyStudioProject({fixtures:[fixture],cues:[cue]}));
+ assert.deepEqual(old.cues[0].fixtureEffects,{});
+ assert.deepEqual(old.editorDraft.fixtureEffects,{});
+});
