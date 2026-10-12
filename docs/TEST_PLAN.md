@@ -145,3 +145,9 @@ Host, platform, CPU, compiler, kernel, commit, universe count, pixels, frame rat
 - [ ] Chrome real X/Y/Z/rotate/scale and multiselection 10 repeated gestures, pointer release outside window, numeric/colour input editing and history in input-focus contexts, import/export/reload in two resolutions.
 - [ ] User specifically validates Brave Undo and complete effect creation flow before PR merge and Pages release.
 - [ ] Fully configurable reusable FX programs with palette/mask/parameters, versioned schema/upgrade, stable performance target measurements.
+
+## 2026-10-12 — CI confirms numeric-field transaction after removing deep watcher
+- [x] [CI 38211562186](https://github.com/Rzbck/FLUXCUE/actions/runs/38211562186) PASS with 90/90 Node tests.
+- [x] Chromium: numeric Position X focus/input/change/blur edits fixture, creates exactly one command, Ctrl+Z restores old XYZ and redo restores new XYZ.
+- [x] Chromium: actual pointer X drag Undo; two-fixture FX/cue UPDATE→Undo→Redo→GO.
+- [ ] Real Brave test on user's installation; real Y/Z/ROTATE/SCALE, multiselection, native colour picker and untracked direct input coverage.

@@ -23,7 +23,7 @@ The original `src/App.vue` combined project scene state, mutable fixture transfo
 - No new dependencies, copied upstream code, private server or live Art-Net/sACN output. `main`/GitHub Pages intentionally unchanged pending acceptance.
 
 ## Explicit debt after foundation stage 1
-- App.vue still mixes geometry construction, render loop, group commands, fields and cue transport. **Phase 2 must split** `useSceneEditor`, `useCueComposer`, `useDocumentStore`, `PreviewRenderer`, and a transport controller; eliminate the legacy inferred-history watcher after all command paths are migrated.
+- App.vue still mixes geometry construction, render loop, group commands, fields and cue transport. **Phase 2 must split** `useSceneEditor`, `useCueComposer`, `useDocumentStore`, `PreviewRenderer`, and a transport controller. The old *deep watcher that inferred Undo* has already been removed; remaining passive observation only happens at explicit safety boundaries (e.g., Undo before replay). Migrate every remaining direct v-model edit to a typed command before removing that last compatibility path.
 - Per-strip `fixtureEffects` stores a built-in mode ID, not a fully parametric reusable effect definition. This is a reliable composition step, **not** a professional visual FX generator. Next: named effect programs, parameter registry, editable source/transform/colour palettes, modular mask/FX chain and per-fixture parameter snapshot.
 - The project still serializes `schemaVersion:0.1.0`; design v0.3 migrations before removing legacy fields. Do NOT corrupt existing local saves.
 - Cue editing still needs a per-cue persistent draft session so switching between cues does not discard unsaved work; this requires a clear explicit lifecycle and tests.
@@ -39,3 +39,8 @@ The PR remains DRAFT and **must not be merged** until exact HEAD CI is green, re
 - [Issue #23: parameterized effect library](https://github.com/Rzbck/FLUXCUE/issues/23)
 - [Issue #25: browser pointer/Undo and performance](https://github.com/Rzbck/FLUXCUE/issues/25)
 - [Issue #26: cue tracks and deterministic timeline](https://github.com/Rzbck/FLUXCUE/issues/26)
+
+### Verified incremental progress (2026-10-12)
+- Removed the global deep reactive history watcher; all normal editor changes now use focus/change/blur or explicit document commands, and the 3D gizmo uses mouse-down/up atomic transactions. No watcher-triggered silent mutation capture on every frame.
+- [CI 38211562186](https://github.com/Rzbck/FLUXCUE/actions/runs/38211562186) **SUCCESS**: 90/90 Node tests, Vue typecheck/build/security/Pages path, REAL Chrome mouse X gizmo + Undo; Fire/red and Plasma/blue cue UPDATE/Undo/Redo/GO; **numeric Position X editor with focus/change/blur creates exactly 1 Undo and Ctrl+Z/Redo restore exact coordinate**. These tests cover only these scenarios; user's Brave failure has not been reproduced/verified.
+- Remaining live proof: different mouse axes, rotation/scale, input focus in native OS colour dialog, multi-fixture editing, all field types, and per-cue effect parameter library. Main is unchanged, PR remains DRAFT.
