@@ -32,7 +32,9 @@ export function createDocumentHistory({capacity=80}={}){
       return checkpoint(before,state,description);
     },
     push(before,after,description='Edit'){
-      if(pending)throw new Error('Cannot push while another edit is open');
+      // A click on a command button can arrive before a focused input's blur;
+      // finalize that input against the button's BEFORE state, not its AFTER.
+      if(pending)this.commit(before);
       return checkpoint(before,after,description);
     },
     observe(state){
